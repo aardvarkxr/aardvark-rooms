@@ -1,6 +1,6 @@
 {
   "name": "@aardvarkxr/room-gadget",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Gadget (client) for Aardvark rooms",
   "author": "Joe Ludwig <joe@valvesoftware.com>",
   "homepage": "",

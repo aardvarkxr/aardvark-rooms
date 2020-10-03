@@ -1,6 +1,6 @@
 {
   "name": "@aardvarkxr/room-shared",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "Shared types and utility functions for Aardvark rooms",
   "author": "Joe Ludwig <joe@valvesoftware.com>",
   "homepage": "",
