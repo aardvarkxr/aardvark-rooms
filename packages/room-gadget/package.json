@@ -2,7 +2,7 @@
   "name": "@aardvarkxr/room-gadget",
   "version": "0.0.1",
   "description": "Gadget (client) for Aardvark rooms",
-  "author": "Joe Ludwig <joe@valvesoftware.com>",
+  "author": "Joe Ludwig <joe@programmerjoe.com>",
   "homepage": "",
   "license": "BSD-3-Clause",
   "main": "lib/room-gadget.js",

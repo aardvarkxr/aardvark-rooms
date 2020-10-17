@@ -1,7 +1,19 @@
 {
   "name": "root",
   "private": true,
+  "workspaces": {
+    "packages": [
+      "./packages/*"
+    ]
+  },
   "devDependencies": {
-    "lerna": "^3.22.1"
+    "@types/jest": "^26.0.14",
+    "lerna": "^3.22.1",
+    "tslib": "^1.10.0",
+    "typescript": "^4.0.3"
+  },
+  "dependencies": {
+    "@aardvarkxr/aardvark-shared": "^1.2.0",
+    "jest": "^26.5.3"
   }
 }

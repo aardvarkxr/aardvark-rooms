@@ -2,7 +2,7 @@
   "name": "@aardvarkxr/room-shared",
   "version": "0.0.1",
   "description": "Shared types and utility functions for Aardvark rooms",
-  "author": "Joe Ludwig <joe@valvesoftware.com>",
+  "author": "Joe Ludwig <joe@programmerjoe.com>",
   "homepage": "",
   "license": "BSD-3-Clause",
   "main": "lib/room-shared.js",
@@ -17,6 +17,11 @@
     "access": "public"
   },
   "scripts": {
-    "test": "echo \"Error: run tests from root\" && exit 1"
+    "test": "echo \"Error: run tests from root\" && exit 1",
+    "start": "npx tsc --watch -p .",
+    "build": "tsc -p ."
+  },
+  "devDependencies": {
+    "typescript": "^4.0.3"
   }
 }
