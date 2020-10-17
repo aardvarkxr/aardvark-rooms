@@ -1,10 +1,7 @@
 import { RoomServer } from './../room_server_main';
 import { MessageType, AardvarkPort, MsgSetEndpointType, EndpointType, Envelope, MsgSetEndpointTypeResponse, MsgGetAardvarkManifest, MsgGeAardvarkManifestResponse } from '@aardvarkxr/aardvark-shared';
-// import { WS  } from 'jest-websocket-mock';
-// import { WebSocket } from 'mock-socket';
 import WebSocket = require('ws' );
 
-// ( global as any).WebSocket = WebSocket;
 
 jest.useRealTimers();
 
