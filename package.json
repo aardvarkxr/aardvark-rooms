@@ -6,9 +6,15 @@
       "./packages/*"
     ]
   },
+  "scripts": {
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:clean": "jest --clearCache"
+  },
   "devDependencies": {
     "@types/jest": "^26.0.14",
     "lerna": "^3.22.1",
+    "ts-jest": "^26.4.1",
     "tslib": "^1.10.0",
     "typescript": "^4.0.3"
   },

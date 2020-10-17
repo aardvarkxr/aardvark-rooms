@@ -9,19 +9,32 @@ class Room
 
 }
 
+export class Connection
+{
+	private ws:WebSocket;
+
+	constructor( ws: WebSocket )
+	{
+		this.ws = ws;
+	}
+
+}
+
 export class RoomServer
 {
 
-	private m_app = express();
-	private m_server = http.createServer( this.m_app );
-	private m_wss:WebSocket.Server;
-	private m_nextConnectionId = 27;
+	private app = express();
+	private server = http.createServer( this.app );
+	private wss: WebSocket.Server;
+	private nextConnectionId = 27;
+	private port: number;
+	private connections: Connection[] = [];
 
-	constructor( port: number )
+	constructor( port?: number )
 	{
-		this.m_wss = new WebSocket.Server( { server: this.m_server } );
+		this.wss = new WebSocket.Server( { server: this.server } );
 
-		this.m_server.on( 'error', ( e:NodeJS.ErrnoException ) =>
+		this.server.on( 'error', ( e:NodeJS.ErrnoException ) =>
 		{
 			if( e.code === 'EADDRINUSE' )
 			{
@@ -30,20 +43,45 @@ export class RoomServer
 			}
 		} );
 
-		this.m_server.listen( port, () => 
-		{
-			console.log(`Room Server started on port ${ port } :)`);
-
-			this.m_wss.on('connection', this.onConnection );
-		} );
+		this.port = port ?? 24567;
 	}
 
 	async init()
 	{
+		return new Promise<void>( ( resolve, reject ) =>
+		{
+			this.server.listen( this.port, "127.0.0.1", () => 
+			{
+				console.log(`Room Server started on port ${ this.port } :)`);
+	
+				this.wss.on('connection', this.onConnection );
+
+				resolve();
+			} );
+		} );
 	}
 
-	@bind onConnection( ws: WebSocket, request: http.IncomingMessage )
+	async cleanup()
 	{
-		
+		this.server.close();
+		// return new Promise<void>( ( resolve, reject ) =>
+		// {
+		// 	this.server.close( () =>
+		// 	{
+		// 		resolve();
+		// 	} );
+		// } )
+	}
+
+	public get portNumber()
+	{
+		return this.port;
+	}
+
+	@bind 
+	private onConnection( ws: WebSocket, request: http.IncomingMessage )
+	{
+		console.log( "new connection" );		
+		this.connections.push( new Connection( ws ) );
 	}
 }
