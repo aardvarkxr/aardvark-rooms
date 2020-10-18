@@ -6,6 +6,7 @@ module.exports = {
   moduleNameMapper: {
     // '^@aardvarkxr/aardvark-shared$': path.resolve(__dirname, '../packages/aardvark-shared/src/index.ts'),
     // '^@aardvarkxr/aardvark-react$': path.resolve(__dirname, '../packages/aardvark-react/src/index.ts'),
+    '^@aardvarkxr/room-shared$': path.resolve(__dirname, 'packages/room-shared/src/shared_index.ts'),
     "\\.(css|less)$": "<rootDir>/__mocks__/styleMock.js",
   },
   modulePaths: 

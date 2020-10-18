@@ -1,6 +1,5 @@
-import { RoomMessage } from '@aardvarkxr/room-shared';
+import { RoomMessage, RoomMessageType, RoomResult } from '@aardvarkxr/room-shared';
 import { RoomServer } from './../room_server_main';
-import { MessageType, AardvarkPort, MsgSetEndpointType, EndpointType, Envelope, MsgSetEndpointTypeResponse, MsgGetAardvarkManifest, MsgGeAardvarkManifestResponse } from '@aardvarkxr/aardvark-shared';
 import bind from 'bind-decorator';
 import WebSocket = require('ws' );
 
@@ -30,6 +29,7 @@ class RoomTestClient
 	public connectResolves: ( ( res: boolean )=>void )[] = [];
 
 	public messages: RoomMessage[] = [];
+	public messageResolve: ( ( msg: RoomMessage )=>void ) | null = null;
 
 	constructor( )
 	{
@@ -43,7 +43,16 @@ class RoomTestClient
 	public onMessage( event: WebSocket.MessageEvent )
 	{
 		let msg = JSON.parse( event.data as string ) as RoomMessage;
-		this.messages.push( msg );
+		if( this.messageResolve )
+		{
+			let res = this.messageResolve;
+			this.messageResolve = null;
+			res( msg );
+		}
+		else
+		{
+			this.messages.push( msg );
+		}
 	}
 
 	@bind
@@ -84,6 +93,43 @@ class RoomTestClient
 		} );
 	}
 
+	public async sendMessage( msg: RoomMessage )
+	{
+		if( !await this.waitForConnect() )
+			return false;
+
+		this.ws.send( JSON.stringify( msg ) );
+		return true;
+	}
+
+	public waitForMessage()
+	{
+		return new Promise< RoomMessage | null >( (resolve, reject) =>
+		{
+			if( !this.connected )
+			{
+				reject( "Can only wait for messages on connected clients" );
+				return;
+			}
+
+			if( this.messageResolve )
+			{
+				reject( "Somebody is already waiting on a message from this client" );
+				return;
+			}
+
+			if( this.messages.length > 0 )
+			{
+				let msg = this.messages[0];
+				this.messages.splice( 0, 1 );
+			}
+			else
+			{
+				this.messageResolve = resolve;
+			}
+		} );
+	}
+
 	public close()
 	{
 		this.ws?.close();
@@ -105,21 +151,21 @@ describe( "RoomServer ", () =>
 
 	it( "nonexistent room", async ( done ) =>
 	{
- 		let addr = `ws://localhost:${ server?.portNumber }`;
+		let client = new RoomTestClient();
+		await client.waitForConnect();
 
-		let client = new WebSocket( addr );
-		client.on( 'error', (sock:WebSocket, code: number, reason: string ) =>
+		let joinMsg: RoomMessage =
 		{
-			throw new Error( reason );
-		} );
+			type: RoomMessageType.JoinRoom,
+			roomId: "fred",
+		};
 
-		let p = new Promise<void>( ( resolve, reject ) =>
-		{
-			client.onopen = (evt: WebSocket.OpenEvent ) => { resolve() } ;
-		} );
+		client.sendMessage( joinMsg );
 
-		await p;
-
+		let resp = await client.waitForMessage();
+		expect( resp?.type ).toBe( RoomMessageType.JoinRoomResponse );
+		expect( resp?.result ).toBe( RoomResult.NoSuchRoom );
+		
 		client.close();
 		done();
 	} );
