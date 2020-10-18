@@ -33,6 +33,7 @@
     "ws": "^7.1.1"
   },
   "dependencies": {
+    "@aardvarkxr/room-shared": "^0.0.1",
     "node": "^12.12.0",
     "ts-node": "^8.4.1"
   }
