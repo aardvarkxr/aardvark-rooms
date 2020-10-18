@@ -11,7 +11,7 @@ let server: RoomServer|null = null;
 
 beforeEach( async() =>
 {
-	server = new RoomServer();
+	server = new RoomServer( undefined, { testMode: true } );
 	await server.init();
 
 } );
@@ -103,7 +103,7 @@ describe( "RoomServer ", () =>
 		done();
 	} );
 
-	it( "connect2", async ( done ) =>
+	it( "nonexistent room", async ( done ) =>
 	{
  		let addr = `ws://localhost:${ server?.portNumber }`;
 

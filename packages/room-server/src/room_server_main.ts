@@ -20,6 +20,11 @@ export class Connection
 
 }
 
+export interface RoomServerOptions
+{
+	testMode?: boolean;
+}
+
 export class RoomServer
 {
 
@@ -29,9 +34,11 @@ export class RoomServer
 	private nextConnectionId = 27;
 	private port: number;
 	private connections: Connection[] = [];
+	private options: RoomServerOptions | undefined;
 
-	constructor( port?: number )
+	constructor( port?: number, options?: RoomServerOptions )
 	{
+		this.options = options;
 		this.wss = new WebSocket.Server( { server: this.server } );
 
 		this.server.on( 'error', ( e:NodeJS.ErrnoException ) =>
@@ -46,13 +53,26 @@ export class RoomServer
 		this.port = port ?? 24567;
 	}
 
+	public get testMode(): boolean
+	{
+		return this.options?.testMode ?? false;
+	}
+
+	public log( msg: string, ...args: any )
+	{
+		if( !this.testMode )
+		{
+			console.log( msg, ...args );
+		}
+	}
+
 	async init()
 	{
 		return new Promise<void>( ( resolve, reject ) =>
 		{
 			this.server.listen( this.port, "127.0.0.1", () => 
 			{
-				console.log(`Room Server started on port ${ this.port } :)`);
+				this.log(`Room Server started on port ${ this.port } :)`);
 	
 				this.wss.on('connection', this.onConnection );
 
@@ -81,7 +101,7 @@ export class RoomServer
 	@bind 
 	private onConnection( ws: WebSocket, request: http.IncomingMessage )
 	{
-		console.log( "new connection" );		
+		this.log( "new connection" );		
 		this.connections.push( new Connection( ws ) );
 	}
 }
