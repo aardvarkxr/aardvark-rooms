@@ -171,6 +171,30 @@ describe( "RoomServer ", () =>
 	} );
 
 
+	it( "create room", async ( done ) =>
+	{
+		let client = new RoomTestClient();
+		await client.waitForConnect();
+
+		let createMsg: RoomMessage =
+		{
+			type: RoomMessageType.CreateRoom,
+		};
+
+		client.sendMessage( createMsg );
+
+		let resp = await client.waitForMessage();
+		expect( resp?.type ).toBe( RoomMessageType.CreateRoomResponse );
+		expect( resp?.result ).toBe( RoomResult.Success );
+		expect( typeof resp?.roomId ).toBe( "string" );
+
+		expect( resp?.roomId ).not.toBe( "" );
+		
+		client.close();
+		done();
+	} );
+
+
 } );
 
 

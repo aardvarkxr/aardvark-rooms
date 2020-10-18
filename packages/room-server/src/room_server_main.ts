@@ -3,10 +3,19 @@ import bind from 'bind-decorator';
 import express from 'express';
 import * as http from 'http';
 import * as WebSocket from 'ws';
+import { v4 as uuid } from 'uuid';
 
 
 class Room
 {
+	public owner: Connection;
+	readonly roomId: string;
+
+	constructor( owner: Connection )
+	{
+		this.owner = owner;
+		this.roomId = uuid();
+	}
 
 }
 
@@ -23,7 +32,8 @@ export class Connection
 		
 		this.ws.onmessage = this.onMessage;
 
-		this.handlers[ /*RoomMessageType.JoinRoom */ 100] = this.onMsgJoinRoom;
+		this.handlers[ RoomMessageType.JoinRoom ] = this.onMsgJoinRoom;
+		this.handlers[ RoomMessageType.CreateRoom ] = this.onMsgCreateRoom;
 	}
 
 	public sendMessage( msg: RoomMessage )
@@ -65,6 +75,26 @@ export class Connection
 
 		this.sendMessage( result );
 	}
+
+	@bind 
+	private onMsgCreateRoom( msg: RoomMessage )
+	{
+		const [ result, room ] = this.server.createRoom( this );
+
+		let response: RoomMessage =
+		{
+			type: RoomMessageType.CreateRoomResponse,
+			result,
+			roomId: room?.roomId,
+		};
+
+		this.sendMessage( response );
+	}
+
+	cleanup()
+	{
+		( this.server as any ) = undefined;
+	}
 }
 
 
@@ -83,6 +113,7 @@ export class RoomServer
 	private port: number;
 	private connections: Connection[] = [];
 	private options: RoomServerOptions | undefined;
+	private rooms = new Map< string, Room> ();
 
 	constructor( port?: number, options?: RoomServerOptions )
 	{
@@ -131,14 +162,14 @@ export class RoomServer
 
 	async cleanup()
 	{
+		for( let conn of this.connections )
+		{
+			conn.cleanup();
+		}
+		this.connections = [];
+
 		this.server.close();
-		// return new Promise<void>( ( resolve, reject ) =>
-		// {
-		// 	this.server.close( () =>
-		// 	{
-		// 		resolve();
-		// 	} );
-		// } )
+		this.rooms.clear();
 	}
 
 	public get portNumber()
@@ -151,5 +182,12 @@ export class RoomServer
 	{
 		this.log( "new connection" );		
 		this.connections.push( new Connection( ws, this ) );
+	}
+
+	public createRoom( owner: Connection ) : [ RoomResult, Room | undefined ]
+	{
+		let room = new Room( owner );
+		this.rooms.set( room.roomId, room );
+		return [ RoomResult.Success, room ];
 	}
 }
