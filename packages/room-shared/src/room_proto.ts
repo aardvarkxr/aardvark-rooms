@@ -20,6 +20,11 @@ export enum RoomResult
 
 	NoSuchRoom = 1001,
 	PermissionDenied = 1002,
+	InvalidParameters = 1003,
+	UnknownFailure = 1004,
+	AlreadyInThisRoom = 1005,
+	UnknownMember = 1006,
+
 }
 
 export interface RoomMessage

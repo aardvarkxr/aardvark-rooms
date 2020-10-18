@@ -130,6 +130,54 @@ class RoomTestClient
 		} );
 	}
 
+	public async createRoom()
+	{
+		await this.waitForConnect();
+
+		let createMsg: RoomMessage =
+		{
+			type: RoomMessageType.CreateRoom,
+		};
+
+		this.sendMessage( createMsg );
+
+		let resp = await this.waitForMessage();
+		expect( resp?.type ).toBe( RoomMessageType.CreateRoomResponse );
+		return resp?.roomId;
+	}
+
+	public async joinRoom( roomId: string )
+	{
+		await this.waitForConnect();
+
+		let joinMsg: RoomMessage =
+		{
+			type: RoomMessageType.JoinRoom,
+			roomId,
+		};
+
+		this.sendMessage( joinMsg );
+
+		let resp = await this.waitForMessage();
+		return resp?.result ?? RoomResult.UnknownFailure;
+	}
+
+	public async leaveRoom( roomId: string )
+	{
+		await this.waitForConnect();
+
+		let leaveMsg: RoomMessage =
+		{
+			type: RoomMessageType.LeaveRoom,
+			roomId,
+		};
+
+		this.sendMessage( leaveMsg );
+
+		let resp = await this.waitForMessage();
+		return resp?.result ?? RoomResult.UnknownFailure;
+	}
+
 	public close()
 	{
 		this.ws?.close();
@@ -190,6 +238,78 @@ describe( "RoomServer ", () =>
 
 		expect( resp?.roomId ).not.toBe( "" );
 		
+		client.close();
+		done();
+	} );
+
+
+	it( "join room", async ( done ) =>
+	{
+		let client = new RoomTestClient();
+		let roomId = await client.createRoom();
+
+		let joinMsg: RoomMessage =
+		{
+			type: RoomMessageType.JoinRoom,
+			roomId,
+		};
+
+		client.sendMessage( joinMsg );
+
+		let resp = await client.waitForMessage();
+		expect( resp?.type ).toBe( RoomMessageType.JoinRoomResponse );
+		expect( resp?.result ).toBe( RoomResult.Success );
+
+		client.close();
+		done();
+	} );
+
+	it( "join twice", async ( done ) =>
+	{
+		let client = new RoomTestClient();
+		let roomId = await client.createRoom() as string;
+
+		expect( typeof roomId ).toBe( "string" );
+		expect( await client.joinRoom( roomId ) ).toBe( RoomResult.Success );
+		expect( await client.joinRoom( roomId ) ).toBe( RoomResult.AlreadyInThisRoom );
+
+		client.close();
+		done();
+	} );
+
+	it( "leave room", async ( done ) =>
+	{
+		let client = new RoomTestClient();
+		let roomId = await client.createRoom() as string;
+
+		expect( await client.joinRoom( roomId ) ).toBe( RoomResult.Success );
+
+		let leaveMsg: RoomMessage =
+		{
+			type: RoomMessageType.LeaveRoom,
+			roomId,
+		};
+
+		client.sendMessage( leaveMsg );
+
+		let resp = await client.waitForMessage();
+		expect( resp?.type ).toBe( RoomMessageType.LeaveRoomResponse );
+		expect( resp?.result ).toBe( RoomResult.Success );
+
+		client.close();
+		done();
+	} );
+
+	it( "leave when not joined", async ( done ) =>
+	{
+		let client = new RoomTestClient();
+		let roomId = await client.createRoom() as string;
+
+		expect( await client.leaveRoom( roomId ) ).toBe( RoomResult.UnknownMember );
+		expect( await client.joinRoom( roomId ) ).toBe( RoomResult.Success );
+		expect( await client.leaveRoom( roomId ) ).toBe( RoomResult.Success );
+		expect( await client.leaveRoom( roomId ) ).toBe( RoomResult.UnknownMember );
+
 		client.close();
 		done();
 	} );
