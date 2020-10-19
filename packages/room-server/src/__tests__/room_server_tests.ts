@@ -118,10 +118,10 @@ class RoomTestClient
 				return;
 			}
 
-			if( this.messages.length > 0 )
+			let msg = this.messages.shift();
+			if( msg )
 			{
-				let msg = this.messages[0];
-				this.messages.splice( 0, 1 );
+				resolve( msg );
 			}
 			else
 			{
@@ -363,6 +363,40 @@ describe( "RoomServer ", () =>
 		expect( await client1.destroyRoom( roomId ) ).toBe( RoomResult.Success );
 		expect( await client1.destroyRoom( "arglebargle" ) ).toBe( RoomResult.NoSuchRoom );
 		expect( await client1.destroyRoom( roomId ) ).toBe( RoomResult.NoSuchRoom );
+
+		client1.close();
+		client2.close();
+		done();
+	} );
+
+	it( "destroy room from inside", async ( done ) =>
+	{
+		let client1 = new RoomTestClient();
+		let roomId = await client1.createRoom() as string;
+		let client2 = new RoomTestClient();
+		await client2.waitForConnect();
+
+		expect( await client1.joinRoom( roomId ) ).toBe( RoomResult.Success );
+		expect( await client2.joinRoom( roomId ) ).toBe( RoomResult.Success );
+
+		let destroyMsg: RoomMessage =
+		{
+			type: RoomMessageType.DestroyRoom,
+			roomId,
+		}
+		client1.sendMessage( destroyMsg );
+
+		let ejectMsg = await client1.waitForMessage();
+		expect( ejectMsg?.type ).toBe( RoomMessageType.EjectedFromRoom );
+		expect( ejectMsg?.roomId ).toBe( roomId );
+
+		ejectMsg = await client2.waitForMessage();
+		expect( ejectMsg?.type ).toBe( RoomMessageType.EjectedFromRoom );
+		expect( ejectMsg?.roomId ).toBe( roomId );
+
+		let resp = await client1.waitForMessage();
+		expect( resp?.type ).toBe( RoomMessageType.DestroyRoomResponse );
+		expect( resp?.result ).toBe( RoomResult.Success );
 
 		client1.close();
 		client2.close();
