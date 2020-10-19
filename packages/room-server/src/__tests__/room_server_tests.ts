@@ -146,6 +146,23 @@ class RoomTestClient
 		return resp?.roomId;
 	}
 
+	public async destroyRoom( roomId: string )
+	{
+		await this.waitForConnect();
+
+		let destroyMsg: RoomMessage =
+		{
+			type: RoomMessageType.DestroyRoom,
+			roomId,
+		}
+		this.sendMessage( destroyMsg );
+
+		let resp = await this.waitForMessage();
+		expect( resp?.type ).toBe( RoomMessageType.DestroyRoomResponse );
+
+		return resp?.result;
+	}
+
 	public async joinRoom( roomId: string )
 	{
 		await this.waitForConnect();
@@ -311,6 +328,44 @@ describe( "RoomServer ", () =>
 		expect( await client.leaveRoom( roomId ) ).toBe( RoomResult.UnknownMember );
 
 		client.close();
+		done();
+	} );
+
+	it( "destroy room", async ( done ) =>
+	{
+		let client = new RoomTestClient();
+		let roomId = await client.createRoom() as string;
+
+		let destroyMsg: RoomMessage =
+		{
+			type: RoomMessageType.DestroyRoom,
+			roomId,
+		}
+		client.sendMessage( destroyMsg );
+
+		let resp = await client.waitForMessage();
+		expect( resp?.type ).toBe( RoomMessageType.DestroyRoomResponse );
+		expect( resp?.result ).toBe( RoomResult.Success );
+
+		client.close();
+		done();
+	} );
+
+	it( "destroy room inappropriately", async ( done ) =>
+	{
+		let client1 = new RoomTestClient();
+		let roomId = await client1.createRoom() as string;
+
+		let client2 = new RoomTestClient();
+		await client2.waitForConnect();
+
+		expect( await client2.destroyRoom( roomId ) ).toBe( RoomResult.PermissionDenied );
+		expect( await client1.destroyRoom( roomId ) ).toBe( RoomResult.Success );
+		expect( await client1.destroyRoom( "arglebargle" ) ).toBe( RoomResult.NoSuchRoom );
+		expect( await client1.destroyRoom( roomId ) ).toBe( RoomResult.NoSuchRoom );
+
+		client1.close();
+		client2.close();
 		done();
 	} );
 

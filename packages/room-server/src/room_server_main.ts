@@ -41,6 +41,21 @@ class Room
 		return RoomResult.Success;
 	}
 
+	public ejectAll()
+	{
+		let ejectMsg : RoomMessage =
+		{
+			type: RoomMessageType.EjectedFromRoom,
+			roomId: this.roomId,
+		};
+
+		for( let member of this.members )
+		{
+			member.sendMessage( ejectMsg );
+		}
+
+		this.members = [];
+	}
 }
 
 export class Connection
@@ -59,6 +74,7 @@ export class Connection
 		this.handlers[ RoomMessageType.JoinRoom ] = this.onMsgJoinRoom;
 		this.handlers[ RoomMessageType.LeaveRoom ] = this.onMsgLeaveRoom;
 		this.handlers[ RoomMessageType.CreateRoom ] = this.onMsgCreateRoom;
+		this.handlers[ RoomMessageType.DestroyRoom ] = this.onMsgDestroyRoom;
 	}
 
 	public sendMessage( msg: RoomMessage )
@@ -162,6 +178,29 @@ export class Connection
 			type: RoomMessageType.CreateRoomResponse,
 			result,
 			roomId: room?.roomId,
+		};
+
+		this.sendMessage( response );
+	}
+
+	@bind 
+	private onMsgDestroyRoom( msg: RoomMessage )
+	{
+		let result: RoomResult;
+		if( !msg.roomId )
+		{
+			result = RoomResult.InvalidParameters;
+		}
+		else
+		{
+			result = this.server.destroyRoom( this, msg.roomId );
+		}
+
+		let response: RoomMessage =
+		{
+			type: RoomMessageType.DestroyRoomResponse,
+			result,
+			roomId: msg?.roomId,
 		};
 
 		this.sendMessage( response );
@@ -271,4 +310,19 @@ export class RoomServer
 	{
 		return this.rooms.get( roomId );
 	}
+
+	public destroyRoom( connection: Connection, roomId: string )
+	{
+		let room = this.findRoom( roomId );
+		if( !room )
+			return RoomResult.NoSuchRoom;
+
+		if( room.owner != connection )
+			return RoomResult.PermissionDenied;
+
+		room.ejectAll();
+		this.rooms.delete( roomId );
+		return RoomResult.Success;
+	}
+
 }

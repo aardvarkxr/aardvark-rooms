@@ -12,6 +12,8 @@ export enum RoomMessageType
 	CreateRoomResponse = 202,
 	DestroyRoom = 203,
 	DestroyRoomResponse = 204,	
+
+	EjectedFromRoom = 301,
 }
 
 export enum RoomResult
