@@ -1,5 +1,5 @@
 import { RoomMessage, RoomMessageType, RoomResult } from '@aardvarkxr/room-shared';
-import { RoomServer } from './../room_server_main';
+import { RoomServer } from '../room_server';
 import bind from 'bind-decorator';
 import WebSocket = require('ws' );
 
