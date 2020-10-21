@@ -223,6 +223,7 @@ export class Connection
 	private ws:WebSocket;
 	private handlers: { [ msgType: number ]: ( msg: RoomMessage ) => void } = {};
 	private server: RoomServer;
+	private rooms: Room[] = [];
 
 	constructor( ws: WebSocket, server: RoomServer )
 	{
@@ -230,6 +231,7 @@ export class Connection
 		this.server = server;
 		
 		this.ws.onmessage = this.onMessage;
+		this.ws.onclose = this.onClose;
 
 		this.handlers[ RoomMessageType.JoinRoom ] = this.onMsgJoinRoom;
 		this.handlers[ RoomMessageType.LeaveRoom ] = this.onMsgLeaveRoom;
@@ -271,6 +273,16 @@ export class Connection
 		}
 	}
 
+	@bind
+	private onClose( evt: WebSocket.CloseEvent )
+	{
+		for( let room of this.rooms )
+		{
+			room.leave( this );
+		}
+		this.rooms = [];
+	}
+
 	@bind 
 	private onMsgJoinRoom( msg: RoomMessage )
 	{
@@ -289,6 +301,11 @@ export class Connection
 			else
 			{
 				result = room.join( this );
+
+				if( result == RoomResult.Success )
+				{
+					this.rooms.push( room );
+				}
 			}
 		}
 
@@ -319,6 +336,15 @@ export class Connection
 			else
 			{
 				result = room.leave( this );
+				
+				if( result == RoomResult.Success )
+				{
+					let roomIndex = this.rooms.indexOf( room );
+					if( roomIndex != -1 )
+					{
+						this.rooms.splice( roomIndex, 1 );
+					}
+				}
 			}
 		}
 

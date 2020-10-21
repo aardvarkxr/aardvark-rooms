@@ -382,7 +382,7 @@ describe( "RoomServer ", () =>
 		expect( memberLeft?.type ).toBe( RoomMessageType.MemberLeft );
 		expect( memberLeft?.memberId ).toBe( client1MemberId );
 		expect( memberLeft?.roomId ).toBe( roomId );
-		
+
 		client1.close();
 		client2.close();
 		done();
@@ -408,6 +408,44 @@ describe( "RoomServer ", () =>
 		expect( resp?.result ).toBe( RoomResult.Success );
 
 		client.close();
+		done();
+	} );
+
+	it( "leave by disconnecting", async ( done ) =>
+	{
+		let client1 = new RoomTestClient( server );
+		let roomId = await client1.createRoom() as string;
+		let client2 = new RoomTestClient( server );
+		await client2.waitForConnect();
+
+		expect( await client1.joinRoom( roomId ) ).toBe( RoomResult.Success );
+		expect( await client2.joinRoom( roomId ) ).toBe( RoomResult.Success );
+
+		expect( ( await client1.waitForMessage() )?.type ).toBe( RoomMessageType.RequestMemberInfo );
+		expect( ( await client2.waitForMessage() )?.type ).toBe( RoomMessageType.RequestMemberInfo );
+		
+		let initInfoMsg1: RoomMessage =
+		{
+			type: RoomMessageType.RequestMemberResponse,
+			roomId,
+			initInfo: {},
+		}
+		client1.sendMessage( initInfoMsg1 );
+		client2.sendMessage( initInfoMsg1 );
+
+		expect( ( await client2.waitForMessage() )?.type ).toBe( RoomMessageType.AddRemoteMember );
+		expect( ( await client1.waitForMessage() )?.type ).toBe( RoomMessageType.AddRemoteMember );
+
+		// The client hanging up should cause the other end to lose us as a member
+		client1.close();
+
+		let memberLeft = await client2.waitForMessage();
+		expect( memberLeft?.type ).toBe( RoomMessageType.MemberLeft );
+		expect( memberLeft?.memberId ).toBe( 1 );
+		expect( memberLeft?.roomId ).toBe( roomId );
+		
+		client1.close();
+		client2.close();
 		done();
 	} );
 
