@@ -6,33 +6,19 @@ import WebSocket = require('ws' );
 
 jest.useRealTimers();
 
-let server: RoomServer|null = null;
-
-beforeEach( async() =>
-{
-	server = new RoomServer( undefined, { testMode: true } );
-	await server.init();
-
-} );
-
-afterEach( async () =>
-{
-	await server?.cleanup();
-	server = null;
-} );
-
 
 class RoomTestClient
 {
-	public ws = new WebSocket( `ws://localhost:${ server?.portNumber }` );
+	public ws: WebSocket;
 	public connected = false;
 	public connectResolves: ( ( res: boolean )=>void )[] = [];
 
 	public messages: RoomMessage[] = [];
 	public messageResolve: ( ( msg: RoomMessage )=>void ) | null = null;
 
-	constructor( )
+	constructor( server: RoomServer )
 	{
+		this.ws = new WebSocket( `ws://localhost:${ server?.portNumber }` );
 
 		this.ws.onopen = this.onConnect;
 		this.ws.onmessage = this.onMessage;
@@ -204,9 +190,25 @@ class RoomTestClient
 
 describe( "RoomServer ", () =>
 {
+	let server: RoomServer;
+
+	beforeEach( async() =>
+	{
+		server = new RoomServer( undefined, { testMode: true } );
+		await server.init();
+
+	} );
+
+	afterEach( async () =>
+	{
+		await server?.cleanup();
+		( server as any) = undefined;
+	} );
+
+
 	it( "connect", async ( done ) =>
 	{
-		let client = new RoomTestClient();
+		let client = new RoomTestClient( server );
 		let res = await client.waitForConnect();
 
 		expect( res ).toBe( true );
@@ -216,7 +218,7 @@ describe( "RoomServer ", () =>
 
 	it( "nonexistent room", async ( done ) =>
 	{
-		let client = new RoomTestClient();
+		let client = new RoomTestClient( server );
 		await client.waitForConnect();
 
 		let joinMsg: RoomMessage =
@@ -238,7 +240,7 @@ describe( "RoomServer ", () =>
 
 	it( "create room", async ( done ) =>
 	{
-		let client = new RoomTestClient();
+		let client = new RoomTestClient( server );
 		await client.waitForConnect();
 
 		let createMsg: RoomMessage =
@@ -262,7 +264,7 @@ describe( "RoomServer ", () =>
 
 	it( "join room", async ( done ) =>
 	{
-		let client = new RoomTestClient();
+		let client = new RoomTestClient( server );
 		let roomId = await client.createRoom();
 
 		let joinMsg: RoomMessage =
@@ -283,7 +285,7 @@ describe( "RoomServer ", () =>
 
 	it( "join twice", async ( done ) =>
 	{
-		let client = new RoomTestClient();
+		let client = new RoomTestClient( server );
 		let roomId = await client.createRoom() as string;
 
 		expect( typeof roomId ).toBe( "string" );
@@ -294,9 +296,31 @@ describe( "RoomServer ", () =>
 		done();
 	} );
 
+	it( "two members", async ( done ) =>
+	{
+		let client1 = new RoomTestClient( server );
+		let roomId = await client1.createRoom() as string;
+		let client2 = new RoomTestClient( server );
+		await client2.waitForConnect();
+
+		expect( await client1.joinRoom( roomId ) ).toBe( RoomResult.Success );
+		expect( await client2.joinRoom( roomId ) ).toBe( RoomResult.Success );
+
+		let infoRequestMessage = await client1.waitForMessage();
+		expect( infoRequestMessage?.type ).toBe( RoomMessageType.RequestMemberInfo );
+		expect( infoRequestMessage?.roomId ).toBe( roomId );
+		
+		let infoRequestMessage2 = await client2.waitForMessage();
+		expect( infoRequestMessage2?.type ).toBe( RoomMessageType.RequestMemberInfo );
+		expect( infoRequestMessage2?.roomId ).toBe( roomId );
+		
+		client1.close();
+		done();
+	} );
+
 	it( "leave room", async ( done ) =>
 	{
-		let client = new RoomTestClient();
+		let client = new RoomTestClient( server );
 		let roomId = await client.createRoom() as string;
 
 		expect( await client.joinRoom( roomId ) ).toBe( RoomResult.Success );
@@ -319,7 +343,7 @@ describe( "RoomServer ", () =>
 
 	it( "leave when not joined", async ( done ) =>
 	{
-		let client = new RoomTestClient();
+		let client = new RoomTestClient( server );
 		let roomId = await client.createRoom() as string;
 
 		expect( await client.leaveRoom( roomId ) ).toBe( RoomResult.UnknownMember );
@@ -333,7 +357,7 @@ describe( "RoomServer ", () =>
 
 	it( "destroy room", async ( done ) =>
 	{
-		let client = new RoomTestClient();
+		let client = new RoomTestClient( server );
 		let roomId = await client.createRoom() as string;
 
 		let destroyMsg: RoomMessage =
@@ -353,10 +377,10 @@ describe( "RoomServer ", () =>
 
 	it( "destroy room inappropriately", async ( done ) =>
 	{
-		let client1 = new RoomTestClient();
+		let client1 = new RoomTestClient( server );
 		let roomId = await client1.createRoom() as string;
 
-		let client2 = new RoomTestClient();
+		let client2 = new RoomTestClient( server );
 		await client2.waitForConnect();
 
 		expect( await client2.destroyRoom( roomId ) ).toBe( RoomResult.PermissionDenied );
@@ -371,13 +395,16 @@ describe( "RoomServer ", () =>
 
 	it( "destroy room from inside", async ( done ) =>
 	{
-		let client1 = new RoomTestClient();
+		let client1 = new RoomTestClient( server );
 		let roomId = await client1.createRoom() as string;
-		let client2 = new RoomTestClient();
+		let client2 = new RoomTestClient( server );
 		await client2.waitForConnect();
 
 		expect( await client1.joinRoom( roomId ) ).toBe( RoomResult.Success );
 		expect( await client2.joinRoom( roomId ) ).toBe( RoomResult.Success );
+
+		expect( ( await client1.waitForMessage() )?.type ).toBe( RoomMessageType.RequestMemberInfo );
+		expect( ( await client2.waitForMessage() )?.type ).toBe( RoomMessageType.RequestMemberInfo );
 
 		let destroyMsg: RoomMessage =
 		{

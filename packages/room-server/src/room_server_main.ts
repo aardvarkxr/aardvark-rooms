@@ -4,13 +4,19 @@ import express from 'express';
 import * as http from 'http';
 import * as WebSocket from 'ws';
 import { v4 as uuid } from 'uuid';
+import { AddressInfo } from 'net';
 
+interface MemberInfo
+{
+	connection: Connection;
+	waitingForInfoFromPeers: Connection[];
+}
 
 class Room
 {
 	public owner: Connection;
 	readonly roomId: string;
-	public members: Connection[] = [];
+	public members: MemberInfo[] = [];
 
 	constructor( owner: Connection )
 	{
@@ -18,20 +24,50 @@ class Room
 		this.roomId = uuid();
 	}
 
+	private findMemberIndex( connection: Connection )
+	{
+		return this.members.findIndex( ( value: MemberInfo ) => value.connection == connection );
+	}
+
 	public join( newMember: Connection )
 	{
-		if( this.members.indexOf( newMember ) != -1 )
+		if( this.findMemberIndex( newMember ) != -1 )
 		{
 			return RoomResult.AlreadyInThisRoom;
 		}
 
-		this.members.push( newMember );
+		// send all existing members an info request to
+		// send to the new guy
+		let infoRequestMsg : RoomMessage =
+		{
+			type: RoomMessageType.RequestMemberInfo,
+			roomId: this.roomId,
+		};
+		for( let member of this.members )
+		{
+			member.connection.sendMessage( infoRequestMsg );
+			member.waitingForInfoFromPeers.push( newMember );
+		}
+
+		if( this.members.length > 0 )
+		{
+			global.setTimeout( () => { newMember.sendMessage( infoRequestMsg ); }, 0 );			
+		}
+
+		let newMemberInfo: MemberInfo =
+		{
+			connection: newMember,
+			waitingForInfoFromPeers: this.members.map( ( value ) => value.connection ),
+		};
+
+		this.members.push( newMemberInfo );
+
 		return RoomResult.Success;
 	}
 
 	public leave( newMember: Connection )
 	{
-		let i = this.members.indexOf( newMember );
+		let i = this.findMemberIndex( newMember );
 		if( i == -1 )
 		{
 			return RoomResult.UnknownMember;
@@ -51,7 +87,7 @@ class Room
 
 		for( let member of this.members )
 		{
-			member.sendMessage( ejectMsg );
+			member.connection.sendMessage( ejectMsg );
 		}
 
 		this.members = [];
@@ -91,7 +127,7 @@ export class Connection
 			let handler = this.handlers[ msg.type ];
 			if( !handler )
 			{
-				this.server.log( `No handler for message of type ${ RoomMessageType[ msg.type ]}`, msg );
+				this.server?.log( `No handler for message of type ${ RoomMessageType[ msg.type ]}`, msg );
 			}
 			else
 			{
@@ -100,8 +136,8 @@ export class Connection
 		}
 		catch( e )
 		{
-			this.server.log( `Exception when processing message`, evt );
-			if( this.server.testMode )
+			this.server?.log( `Exception when processing message`, evt );
+			if( this.server?.testMode )
 			{
 				throw e;
 			}
@@ -266,6 +302,7 @@ export class RoomServer
 		{
 			this.server.listen( this.port, "127.0.0.1", () => 
 			{
+				this.port = ( this.server.address() as AddressInfo )?.port;
 				this.log(`Room Server started on port ${ this.port } :)`);
 	
 				this.wss.on('connection', this.onConnection );
