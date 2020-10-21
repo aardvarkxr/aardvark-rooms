@@ -6,5 +6,12 @@
 		"rootDir": "./src"
 	},
 
-	"types": ["node"]
+	"types": ["node"],
+	"exclude":
+	[
+		"node_modules",
+		"lib",
+		"**/__tests__"
+	]
+
 }
