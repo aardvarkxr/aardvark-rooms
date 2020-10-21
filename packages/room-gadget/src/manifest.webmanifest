@@ -1,0 +1,21 @@
+{
+	"xr_type": "aardvark-gadget@^1.3.0",
+	"name": "Simple Rooms",
+	"icons":
+	[
+		{
+			"src": "models/placeholder.glb",
+			"type": "model/gltf-binary"
+		}
+	],
+	"aardvark": {
+		"permissions":
+		[
+			"scenegraph",
+			"master"
+		],
+		"browserWidth": 1024,
+		"browserHeight": 1024,
+		"startAutomatically": true
+	}
+}
