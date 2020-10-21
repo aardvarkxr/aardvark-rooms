@@ -328,6 +328,8 @@ describe( "RoomServer ", () =>
 		expect( ( addRemote2?.initInfo as any)?.frodo ).toBe( "sam" );
 		expect( typeof addRemote2?.memberId ).toBe( "number" );
 
+		let client1MemberId = addRemote2?.memberId ?? 0;
+
 		let initInfoMsg2: RoomMessage =
 		{
 			type: RoomMessageType.RequestMemberResponse,
@@ -353,14 +355,14 @@ describe( "RoomServer ", () =>
 		let p2sBounce = await client2.waitForMessage();
 		expect( p2sBounce?.type ).toBe( RoomMessageType.MessageFromPrimary );
 		expect( p2sBounce?.roomId ).toBe( roomId );
-		expect( p2sBounce?.memberId ).toBe( addRemote2?.memberId );
+		expect( p2sBounce?.memberId ).toBe( client1MemberId );
 		expect( ( p2sBounce?.message as any)?.cargo ).toBe( "the one ring" );
 
 		let s2p: RoomMessage =
 		{
 			type: RoomMessageType.MessageFromSecondary,
 			roomId,
-			memberId: addRemote2?.memberId,
+			memberId: client1MemberId,
 			message: { my: "pressshhhhuuusss" },
 			messageIsReliable: true,
 		};
@@ -370,9 +372,17 @@ describe( "RoomServer ", () =>
 		let s2pBounce = await client1.waitForMessage();
 		expect( s2pBounce?.type ).toBe( RoomMessageType.MessageFromSecondary );
 		expect( s2pBounce?.roomId ).toBe( roomId );
-		expect( s2pBounce?.memberId ).toBe( addRemote2?.memberId );
+		expect( s2pBounce?.memberId ).toBe( client1MemberId );
 		expect( ( s2pBounce?.message as any)?.my ).toBe( "pressshhhhuuusss" );
 
+		// leaving the room should cause the other end to lose us as a member
+		expect( await client1.leaveRoom( roomId ) ).toBe( RoomResult.Success );
+
+		let memberLeft = await client2.waitForMessage();
+		expect( memberLeft?.type ).toBe( RoomMessageType.MemberLeft );
+		expect( memberLeft?.memberId ).toBe( client1MemberId );
+		expect( memberLeft?.roomId ).toBe( roomId );
+		
 		client1.close();
 		client2.close();
 		done();

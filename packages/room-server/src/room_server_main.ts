@@ -96,7 +96,20 @@ class Room
 			return RoomResult.UnknownMember;
 		}
 		
+		let memberId = this.members[i].memberId;
 		this.members.splice( i, 1  );
+
+		let leftMsg: RoomMessage =
+		{
+			type: RoomMessageType.MemberLeft,
+			roomId: this.roomId,
+			memberId,
+		};
+
+		for( let peerInfo of this.members )
+		{
+			peerInfo.connection.sendMessage( leftMsg );
+		}
 		return RoomResult.Success;
 	}
 
