@@ -16,8 +16,10 @@ export enum RoomMessageType
 	EjectedFromRoom 		= 301,
 	RequestMemberInfo 		= 302,
 	RequestMemberResponse 	= 303,
-	AddRemoteMember 		= 304,
+	AddRemoteMember			= 304,
 	MemberLeft 				= 305,
+	MessageFromPrimary		= 306,
+	MessageFromSecondary	= 307,
 }
 
 export enum RoomResult
@@ -38,8 +40,11 @@ export interface RoomMessage
 {
 	type: RoomMessageType;
 	roomId?: string;
+	memberId?: number;
 	result?: RoomResult;
 	initInfo?: object;
+	message?: object;
+	messageIsReliable?: boolean;
 }
 
 

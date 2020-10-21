@@ -314,7 +314,67 @@ describe( "RoomServer ", () =>
 		expect( infoRequestMessage2?.type ).toBe( RoomMessageType.RequestMemberInfo );
 		expect( infoRequestMessage2?.roomId ).toBe( roomId );
 		
+		let initInfoMsg1: RoomMessage =
+		{
+			type: RoomMessageType.RequestMemberResponse,
+			roomId,
+			initInfo: { frodo: "sam" },
+		}
+		client1.sendMessage( initInfoMsg1 );
+
+		let addRemote2 = await client2.waitForMessage();
+		expect( addRemote2?.roomId ).toBe( roomId );
+		expect( addRemote2?.type ).toBe( RoomMessageType.AddRemoteMember );
+		expect( ( addRemote2?.initInfo as any)?.frodo ).toBe( "sam" );
+		expect( typeof addRemote2?.memberId ).toBe( "number" );
+
+		let initInfoMsg2: RoomMessage =
+		{
+			type: RoomMessageType.RequestMemberResponse,
+			roomId,
+			initInfo: { merry: "pippen" },
+		}
+		client2.sendMessage( initInfoMsg2 );
+
+		let addRemote1 = await client1.waitForMessage();
+		expect( addRemote1?.roomId ).toBe( roomId );
+		expect( addRemote1?.type ).toBe( RoomMessageType.AddRemoteMember );
+		expect( ( addRemote1?.initInfo as any)?.merry ).toBe( "pippen" );
+
+		let p2s: RoomMessage =
+		{
+			type: RoomMessageType.MessageFromPrimary,
+			roomId,
+			message: { cargo: "the one ring" },
+		};
+
+		client1.sendMessage( p2s );
+
+		let p2sBounce = await client2.waitForMessage();
+		expect( p2sBounce?.type ).toBe( RoomMessageType.MessageFromPrimary );
+		expect( p2sBounce?.roomId ).toBe( roomId );
+		expect( p2sBounce?.memberId ).toBe( addRemote2?.memberId );
+		expect( ( p2sBounce?.message as any)?.cargo ).toBe( "the one ring" );
+
+		let s2p: RoomMessage =
+		{
+			type: RoomMessageType.MessageFromSecondary,
+			roomId,
+			memberId: addRemote2?.memberId,
+			message: { my: "pressshhhhuuusss" },
+			messageIsReliable: true,
+		};
+
+		client2.sendMessage( s2p );
+
+		let s2pBounce = await client1.waitForMessage();
+		expect( s2pBounce?.type ).toBe( RoomMessageType.MessageFromSecondary );
+		expect( s2pBounce?.roomId ).toBe( roomId );
+		expect( s2pBounce?.memberId ).toBe( addRemote2?.memberId );
+		expect( ( s2pBounce?.message as any)?.my ).toBe( "pressshhhhuuusss" );
+
 		client1.close();
+		client2.close();
 		done();
 	} );
 

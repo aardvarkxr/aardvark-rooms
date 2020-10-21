@@ -9,7 +9,8 @@ import { AddressInfo } from 'net';
 interface MemberInfo
 {
 	connection: Connection;
-	waitingForInfoFromPeers: Connection[];
+	peersToCreate: Connection[];
+	memberId: number;
 }
 
 class Room
@@ -17,16 +18,37 @@ class Room
 	public owner: Connection;
 	readonly roomId: string;
 	public members: MemberInfo[] = [];
+	private nextMemberId = 1;
+	private server: RoomServer;
 
-	constructor( owner: Connection )
+	constructor( owner: Connection, server: RoomServer )
 	{
 		this.owner = owner;
 		this.roomId = uuid();
+		this.server = server;
 	}
 
 	private findMemberIndex( connection: Connection )
 	{
 		return this.members.findIndex( ( value: MemberInfo ) => value.connection == connection );
+	}
+
+	private findMember( connection: Connection )
+	{
+		let memberIndex = this.findMemberIndex( connection );
+		if( memberIndex == -1 )
+		{
+			return undefined;
+		}
+		else
+		{
+			return this.members[ memberIndex ];
+		}
+	}
+
+	private findMemberById( memberId: number )
+	{
+		return this.members.find( ( value: MemberInfo ) => value.memberId == memberId );
 	}
 
 	public join( newMember: Connection )
@@ -46,7 +68,7 @@ class Room
 		for( let member of this.members )
 		{
 			member.connection.sendMessage( infoRequestMsg );
-			member.waitingForInfoFromPeers.push( newMember );
+			member.peersToCreate.push( newMember );
 		}
 
 		if( this.members.length > 0 )
@@ -57,7 +79,8 @@ class Room
 		let newMemberInfo: MemberInfo =
 		{
 			connection: newMember,
-			waitingForInfoFromPeers: this.members.map( ( value ) => value.connection ),
+			memberId: this.nextMemberId++,
+			peersToCreate: this.members.map( ( value ) => value.connection ),
 		};
 
 		this.members.push( newMemberInfo );
@@ -92,7 +115,95 @@ class Room
 
 		this.members = [];
 	}
+
+	public memberInitInfo( member: Connection, initInfo?: object )
+	{
+		let memberInfo = this.findMember( member );
+		if( !memberInfo )
+		{
+			this.server.log( "memberGadgetInfo call from a non-member" );
+			return;
+		}
+
+		let remoteUserMsg: RoomMessage =
+		{
+			type: RoomMessageType.AddRemoteMember,
+			roomId: this.roomId,
+			memberId: memberInfo.memberId,
+			initInfo: initInfo,
+		}
+		for( let peer of memberInfo.peersToCreate )
+		{
+			peer.sendMessage( remoteUserMsg );
+		}
+		memberInfo.peersToCreate = [];
+	}
+
+	public messageFromPrimary( member: Connection, message: object, messageIsReliable?: boolean )
+	{
+		let memberInfo = this.findMember( member );
+		if( !memberInfo )
+		{
+			this.server.log( "memberGadgetInfo call from a non-member" );
+			return;
+		}
+
+		let primaryMsg: RoomMessage =
+		{
+			type: RoomMessageType.MessageFromPrimary,
+			roomId: this.roomId,
+			memberId: memberInfo.memberId,
+			message,
+			messageIsReliable,
+		}
+
+		for( let peerInfo of this.members )
+		{
+			if( memberInfo.peersToCreate.includes( peerInfo.connection ) )
+			{
+				// no need to send this message to this particular peer
+				// because they haven't received the init info for this user yet
+				continue;
+			}
+			if( peerInfo.connection == member )
+			{
+				continue;
+			}
+
+			peerInfo.connection.sendMessage( primaryMsg );
+		}
+	}
+
+	public messageFromSecondary( member: Connection, peerId: number, 
+		message: object, messageIsReliable?: boolean )
+	{
+		let memberInfo = this.findMember( member );
+		if( !memberInfo )
+		{
+			this.server.log( "messageFromSecondary call from a non-member" );
+			return;
+		}
+
+		let peerInfo = this.findMemberById( peerId );
+		if( !peerInfo )
+		{
+			this.server.log( "messageFromSecondary call for a non-member" );
+			return;
+		}
+
+		let secondaryMsg: RoomMessage =
+		{
+			type: RoomMessageType.MessageFromSecondary,
+			roomId: this.roomId,
+			memberId: peerId,
+			message,
+			messageIsReliable,
+		}
+
+		peerInfo.connection.sendMessage( secondaryMsg );
+	}
 }
+
 
 export class Connection
 {
@@ -111,6 +222,9 @@ export class Connection
 		this.handlers[ RoomMessageType.LeaveRoom ] = this.onMsgLeaveRoom;
 		this.handlers[ RoomMessageType.CreateRoom ] = this.onMsgCreateRoom;
 		this.handlers[ RoomMessageType.DestroyRoom ] = this.onMsgDestroyRoom;
+		this.handlers[ RoomMessageType.RequestMemberResponse ] = this.onMsgRequestMemberResponse;
+		this.handlers[ RoomMessageType.MessageFromPrimary ] = this.onMsgMessageFromPrimary;
+		this.handlers[ RoomMessageType.MessageFromSecondary ] = this.onMsgMessageFromSecondary;
 	}
 
 	public sendMessage( msg: RoomMessage )
@@ -242,6 +356,31 @@ export class Connection
 		this.sendMessage( response );
 	}
 
+	@bind
+	private onMsgRequestMemberResponse( msg: RoomMessage )
+	{
+		let room = this.server.findRoom( msg.roomId );
+		room?.memberInitInfo( this, msg.initInfo ?? {} );
+	}
+
+	@bind
+	private onMsgMessageFromPrimary( msg: RoomMessage )
+	{
+		let room = this.server.findRoom( msg.roomId );
+		room?.messageFromPrimary( this, msg.message ?? {}, msg.messageIsReliable );
+	}
+
+	@bind
+	private onMsgMessageFromSecondary( msg: RoomMessage )
+	{
+		let room = this.server.findRoom( msg.roomId );
+		if( !msg.memberId )
+		{
+			throw new Error( "MessageFromSecondary missing required memberId" );
+		}
+		room?.messageFromSecondary( this, msg.memberId, msg.message ?? {}, msg.messageIsReliable );
+	}
+
 	cleanup()
 	{
 		( this.server as any ) = undefined;
@@ -338,13 +477,16 @@ export class RoomServer
 
 	public createRoom( owner: Connection ) : [ RoomResult, Room | undefined ]
 	{
-		let room = new Room( owner );
+		let room = new Room( owner, this );
 		this.rooms.set( room.roomId, room );
 		return [ RoomResult.Success, room ];
 	}
 
-	public findRoom( roomId: string )
+	public findRoom( roomId?: string )
 	{
+		if( !roomId )
+			return undefined;
+
 		return this.rooms.get( roomId );
 	}
 
