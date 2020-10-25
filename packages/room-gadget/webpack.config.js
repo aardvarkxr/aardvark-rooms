@@ -27,12 +27,11 @@ module.exports =
 					now: Date.now()
 				}
 			),
-			new CopyPlugin({
-				patterns:[
+			new CopyPlugin([
 					{ from: './src/styles.css', to: 'styles.css' },
 					{ from: './src/manifest.webmanifest', to: 'manifest.webmanifest' },
 					{ from: './src/models/placeholder.glb', to: 'models/placeholder.glb' },
-				] }
+				] 
 				),
 		],
 		
@@ -66,12 +65,13 @@ module.exports =
 
 		resolve:
 		{
-			alias: 
-			{ 
-				"crypto": false, 
-				"buffer": false, 
-			},
-			modules:[ path.resolve( __dirname, 'node_modules' ) ],
+			// alias: 
+			// { 
+			// 	"crypto": false, 
+			// 	"buffer": false, 
+			// },
+			modules:[ path.resolve( __dirname, 'node_modules' ),
+		path.resolve( __dirname, "../../node_modules") ],
 			extensions: [ '.ts', '.tsx', '.js' ]
 		},
 	
