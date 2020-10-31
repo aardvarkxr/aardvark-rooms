@@ -6,22 +6,18 @@
   "homepage": "",
   "license": "BSD-3-Clause",
   "main": "lib/shared_index.js",
-  "directories": {
-    "lib": "lib",
-    "test": "__tests__"
-  },
   "files": [
-    "lib"
+    "dist"
   ],
-  "publishConfig": {
-    "access": "public"
-  },
   "scripts": {
-    "test": "echo \"Error: run tests from root\" && exit 1",
-    "start": "npx tsc --watch -p .",
-    "build": "tsc -p ."
-  },
+    "build": "npm run clean && npm run compile",
+    "clean": "rimraf -rf ./dist",
+    "compile": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
+    "test": "npm run build"
+ },
   "devDependencies": {
-    "typescript": "^4.0.3"
+    "rimraf": "~3.0.2",
+    "typescript": "~3.9.6"
   }
 }

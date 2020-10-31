@@ -6,37 +6,40 @@
   "homepage": "",
   "license": "BSD-3-Clause",
   "main": "lib/room_server_main.js",
-  "directories": {
-    "lib": "lib",
-    "test": "__tests__"
-  },
   "files": [
     "lib"
   ],
   "publishConfig": {
     "access": "public"
   },
-  "type": "module",
+  "type": "commonjs",
   "scripts": {
-    "test": "echo \"Error: run tests from root\" && exit 1",
-    "start": "npx tsc --watch -p .",
-    "build": "npx tsc -p ."
+    "build": "npm run clean && npm run compile",
+    "clean": "rimraf -rf ./dist",
+    "compile": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch --runInBand",
+    "test:clean": "jest --clearCache"
   },
   "devDependencies": {
     "@types/express": "^4.17.8",
+    "@types/jest": "~26.0.4",
     "@types/node": "^12.11.7",
     "@types/ws": "^6.0.2",
     "bind-decorator": "^1.0.11",
     "express": "^4.17.1",
+    "jest": "~26.1.0",
+    "ts-jest": "~26.1.2",
     "path": "^0.12.7",
     "pkginfo": "^0.4.1",
-    "typescript": "^4.0.3",
+    "rimraf": "~3.0.2",
+    "typescript": "~3.9.6",
     "ws": "^7.1.1"
   },
   "dependencies": {
-    "@aardvarkxr/room-shared": "^0.0.1",
-    "node": "^12.12.0",
-    "ts-node": "^8.4.1",
+    "@aardvarkxr/room-shared": "*",
+    "ts-node": "~8.10.2",
     "uuid": "^8.3.1"
   }
 }

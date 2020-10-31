@@ -1,38 +1,13 @@
 {
-	"compilerOptions": 
-	{
-		"target": "es2015",
-		"module": "commonjs",
-		"lib": ["es6", "es2015", "dom"],
-		"declaration": true,
-		"outDir": "./lib",
-		"rootDir": ".",
-		"baseUrl": ".",
-		"strict": true,
-		"experimentalDecorators": true,
-		"allowSyntheticDefaultImports": true,
-		"importHelpers": true,
-		"esModuleInterop": true,
-		"resolveJsonModule": true,
-		"moduleResolution" : "node",
-		"paths" :
-		{
-			"@aardvarkxr/room-shared" : [ "./packages/room-shared/src/shared_index.ts" ],
-			"*" : [ "node_modules/@types/*", "node_modules/*", "*" ]
-		},
-		"typeRoots": 
-		[
-			"node_modules/@types",
-			"customTypes"
-		]
+  "extends": "./tsconfig.build.json",
 
-	},
-	"exclude":
-	[
-		"node_modules",
-		"lib",
-		"__tests__"
-	]
-
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@aardvarkxr/*": ["packages/*/src"]
+    },
+    "jsx": "react",
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  }
 }
-
