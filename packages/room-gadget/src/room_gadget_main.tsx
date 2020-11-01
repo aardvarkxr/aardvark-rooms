@@ -111,7 +111,7 @@ class RoomClient
 		} );
 	}
 
-	public async createRoom()
+	public async createRoom(): Promise<RoomResult>
 	{
 		if( !this.connected )
 			return RoomResult.Disconnected;
@@ -129,7 +129,7 @@ class RoomClient
 		return resp?.roomId;
 	}
 
-	public async destroyRoom( roomId: string )
+	public async destroyRoom( roomId: string ): Promise<RoomResult>
 	{
 		if( !this.connected )
 			return RoomResult.Disconnected;
@@ -148,7 +148,7 @@ class RoomClient
 		return resp?.result;
 	}
 
-	public async joinRoom( roomId: string ): RoomResult
+	public async joinRoom( roomId: string ): Promise<RoomResult>
 	{
 		if( !this.connected )
 			return RoomResult.Disconnected;
@@ -166,7 +166,7 @@ class RoomClient
 		return resp?.result ?? RoomResult.UnknownFailure;
 	}
 
-	public async leaveRoom( roomId: string )
+	public async leaveRoom( roomId: string ): Promise<RoomResult>
 	{
 		if( !this.connected )
 			return RoomResult.Disconnected;
@@ -256,7 +256,7 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		{
 			this.setState(
 				{
-					error: `Join failed with { RoomResult[ res ] }`,
+					error: `Join failed with ${ RoomResult[ res ] }`,
 				}
 			);
 		}
@@ -280,7 +280,7 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		{
 			this.setState(
 				{
-					error: `Leave failed with { RoomResult[ res ] }`,
+					error: `Leave failed with ${ RoomResult[ res ] }`,
 				}
 			);
 		}
@@ -306,6 +306,7 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		{
 			return <>
 				<div className="Button" onClick={ this.onJoinRoom }>Join Room</div>
+				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 			</>;
 		}
 	}
