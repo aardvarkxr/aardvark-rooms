@@ -71,13 +71,6 @@ module.exports =
 
 		resolve:
 		{
-			// alias: 
-			// { 
-			// 	"crypto": false, 
-			// 	"buffer": false, 
-			// },
-			modules:[ path.resolve( __dirname, 'node_modules' ),
-		path.resolve( __dirname, "../../node_modules") ],
 			extensions: [ '.ts', '.tsx', '.js' ],
 			plugins: [new TsconfigPathsPlugin()],
 		},
