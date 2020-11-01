@@ -5,7 +5,8 @@
   "author": "Joe Ludwig <joe@programmerjoe.com>",
   "homepage": "",
   "license": "BSD-3-Clause",
-  "main": "lib/shared_index.js",
+  "main": "dist/shared_index",
+  "types": "dist/shared_index",
   "files": [
     "dist"
   ],
