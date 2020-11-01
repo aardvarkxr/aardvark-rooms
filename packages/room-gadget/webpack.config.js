@@ -2,6 +2,8 @@
 const path = require('path');
 var HtmlWebpackPlugin = require( 'html-webpack-plugin' );
 const CopyPlugin = require('copy-webpack-plugin');
+const { WatchIgnorePlugin } = require( 'webpack' );
+const TsconfigPathsPlugin = require("tsconfig-paths-webpack-plugin");
 
 module.exports = 
 [
@@ -14,7 +16,7 @@ module.exports =
 		output:
 		{
 			filename: '[name].js',
-			path: path.resolve( __dirname, './lib' ),
+			path: path.resolve( __dirname, './dist' ),
 		},
 
 		plugins:
@@ -23,16 +25,20 @@ module.exports =
 				{
 					hash: true,
 					filename: "./index.html",
-					template: "./src/index.html",
-					now: Date.now()
+					template: "./src/index.html"
 				}
 			),
 			new CopyPlugin([
 					{ from: './src/styles.css', to: 'styles.css' },
 					{ from: './src/manifest.webmanifest', to: 'manifest.webmanifest' },
-					{ from: './src/models/placeholder.glb', to: 'models/placeholder.glb' },
+					{ from: './src/models/*', to: 'models/[name].[ext]' },
 				] 
 				),
+			new WatchIgnorePlugin( 
+				[
+					/\.ts\.d/,
+					/dist\//
+				] ),
 		],
 		
 		module: 
@@ -72,9 +78,15 @@ module.exports =
 			// },
 			modules:[ path.resolve( __dirname, 'node_modules' ),
 		path.resolve( __dirname, "../../node_modules") ],
-			extensions: [ '.ts', '.tsx', '.js' ]
+			extensions: [ '.ts', '.tsx', '.js' ],
+			plugins: [new TsconfigPathsPlugin()],
 		},
-	
-	}
+		
+		watchOptions:
+		{
+			ignored: "./dist"
+		}
+	},
+
 ];
 

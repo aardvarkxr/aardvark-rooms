@@ -4,7 +4,7 @@
 	"icons":
 	[
 		{
-			"src": "models/placeholder.glb",
+			"src": "models/room.glb",
 			"type": "model/gltf-binary"
 		}
 	],
