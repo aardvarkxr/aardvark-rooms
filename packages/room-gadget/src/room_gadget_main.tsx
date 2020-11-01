@@ -111,7 +111,7 @@ class RoomClient
 		} );
 	}
 
-	public async createRoom(): Promise<RoomResult>
+	public async createRoom(): Promise<RoomResult | string>
 	{
 		if( !this.connected )
 			return RoomResult.Disconnected;
@@ -125,7 +125,6 @@ class RoomClient
 		this.sendMessage( createMsg );
 
 		let resp = await this.waitForMessage();
-		expect( resp?.type ).toBe( RoomMessageType.CreateRoomResponse );
 		return resp?.roomId;
 	}
 
@@ -143,8 +142,6 @@ class RoomClient
 		this.sendMessage( destroyMsg );
 
 		let resp = await this.waitForMessage();
-		expect( resp?.type ).toBe( RoomMessageType.DestroyRoomResponse );
-
 		return resp?.result;
 	}
 
@@ -193,11 +190,10 @@ class RoomClient
 interface SimpleRoomState
 {
 	connected: boolean;
+	createdRoom?: string;
 	currentRoom?: string;
 	error?: string;
 }
-
-const k_testRoomName = "testroom";
 
 class SimpleRoom extends React.Component< {}, SimpleRoomState >
 {
@@ -234,20 +230,34 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 	}
 
 	@bind
-	private onConnectionStateChange()
+	private async onConnectionStateChange()
 	{
-		this.setState( { connected: this.client.connected, currentRoom: null } );
+		let newlyConnected = !this.state.connected && this.client.connected;
+		this.setState( { connected: this.client.connected, currentRoom: null, createdRoom: null } );
+		if( newlyConnected )
+		{
+			// try to make our room
+			let res = await this.client.createRoom();
+			if( typeof res == "string" )
+			{
+				this.setState( { createdRoom: res as string } );
+			}
+			else
+			{
+				this.setState( { error: `Failed to create room: ${ RoomResult[ res as number ] }` } );
+			}
+		}
 	}
 
 	@bind
 	private async onJoinRoom()
 	{
-		let res = await this.client.joinRoom( k_testRoomName );
+		let res = await this.client.joinRoom( this.state.createdRoom );
 		if( res == RoomResult.Success )
 		{
 			this.setState(
 				{
-					currentRoom: k_testRoomName,
+					currentRoom: this.state.createdRoom,
 					error: null,
 				}
 			);
@@ -266,7 +276,7 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 	@bind
 	private async onLeaveRoom()
 	{
-		let res = await this.client.leaveRoom( k_testRoomName );
+		let res = await this.client.leaveRoom( this.state.createdRoom );
 		if( res == RoomResult.Success )
 		{
 			this.setState(
@@ -292,6 +302,7 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		{
 			return <>
 				<div className="Label">Connecting to server...</div>
+				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 				</>;
 		}
 
@@ -300,12 +311,19 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 			return <>
 				<div className="Button" onClick={ this.onLeaveRoom }>Leave Room</div>
 				<div className="Label">Connected to room: { this.state.currentRoom }</div>
+				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
+			</>;
+		}
+		else if( this.state.createdRoom )
+		{
+			return <>
+				<div className="Button" onClick={ this.onJoinRoom }>Join Room</div>
+				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 			</>;
 		}
 		else
 		{
 			return <>
-				<div className="Button" onClick={ this.onJoinRoom }>Join Room</div>
 				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 			</>;
 		}
@@ -340,7 +358,7 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		let msg: RoomMessage =
 		{
 			type: RoomMessageType.MessageFromPrimary,
-			roomId: k_testRoomName,
+			roomId: this.state.createdRoom,
 			messageIsReliable: reliable,
 			message: event,
 		}
@@ -380,7 +398,7 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		let response: RoomMessage =
 		{
 			type: RoomMessageType.RequestMemberResponse,
-			roomId: k_testRoomName,
+			roomId: this.state.createdRoom,
 			initInfo: this.networkUniverse.initInfo,
 		}
 
@@ -408,7 +426,7 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		let msg: RoomMessage =
 		{
 			type: RoomMessageType.MessageFromSecondary,
-			roomId: k_testRoomName,
+			roomId: this.state.createdRoom,
 			memberId,
 			message: evt,
 			messageIsReliable: reliable,
