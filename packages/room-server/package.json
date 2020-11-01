@@ -17,7 +17,8 @@
     "build": "npm run clean && npm run compile",
     "clean": "rimraf -rf ./dist",
     "compile": "tsc -p tsconfig.build.json",
-    "prepublishOnly": "npm run build",
+	"prepublishOnly": "npm run build",
+	"serve": "ts-node src/room_server_main.ts",
     "test": "jest --runInBand",
     "test:watch": "jest --watch --runInBand",
     "test:clean": "jest --clearCache"

@@ -33,6 +33,7 @@ export enum RoomResult
 	InvalidParameters 		= -1003,
 	AlreadyInThisRoom 		= -1004,
 	UnknownMember 			= -1005,
+	Disconnected			= -1006,
 
 }
 
