@@ -1,5 +1,5 @@
 import { AvComposedEntity, AvOrigin, AvPanel, AvStandardGrabbable, AvTransform, DefaultLanding, GrabbableStyle, NetworkUniverseComponent, RemoteUniverseComponent } from '@aardvarkxr/aardvark-react';
-import { Av, emptyVolume, g_builtinModelBox, infiniteVolume } from '@aardvarkxr/aardvark-shared';
+import { Av, AvNodeTransform, emptyVolume, g_builtinModelBox, infiniteVolume } from '@aardvarkxr/aardvark-shared';
 import { RoomResult, RoomMessage, RoomMessageType } from '@aardvarkxr/room-shared';
 import bind from 'bind-decorator';
 import * as React from 'react';
@@ -14,7 +14,7 @@ class RoomClient
 {
 	public ws: WebSocket;
 	public connected = false;
-	private connectionCallback;
+	private connectionCallback: () => void;
 
 	public messages: RoomMessage[] = [];
 	public messageResolve: ( ( msg: RoomMessage )=>void ) | null = null;
@@ -187,28 +187,22 @@ class RoomClient
 	}
 }
 
+interface SimpleRoomProps
+{
+	roomId: string;
+	serverAddress: string;
+	transform: AvNodeTransform;
+}
+
 interface SimpleRoomState
 {
 	connected: boolean;
-	createdRoom?: string;
-	currentRoom?: string;
-	error?: string;
+	joined: boolean;
 }
 
-class SimpleRoom extends React.Component< {}, SimpleRoomState >
+class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 {
-	private m_grabbableRef = React.createRef<AvStandardGrabbable>();
-	private client = new RoomClient( 
-		"ws://localhost:18080", this.onConnectionStateChange,
-		{
-			[ RoomMessageType.MessageFromPrimary ]: this.onMessageFromPrimary,
-			[ RoomMessageType.MessageFromSecondary ]: this.onMessageFromSecondary,
-			[ RoomMessageType.EjectedFromRoom ]: this.onEjectedFromRoom,
-			[ RoomMessageType.RequestMemberInfo ]: this.onRequestMemberInfo,
-			[ RoomMessageType.AddRemoteMember ]: this.onAddRemoteMember,
-			[ RoomMessageType.MemberLeft ]: this.onMemberLeft,
-
-		} );
+	private client: RoomClient;
 	private networkUniverse = new NetworkUniverseComponent( this.onNetworkEvent );
 	private remoteUniverses: { [memberId: number]: RemoteUniverseComponent } = {};
 
@@ -218,138 +212,46 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		this.state = 
 		{ 
 			connected: false,
+			joined: false,
 		};
-	}
+		this.client = new RoomClient( 
+			this.props.serverAddress, this.onConnectionStateChange,
+			{
+				[ RoomMessageType.MessageFromPrimary ]: this.onMessageFromPrimary,
+				[ RoomMessageType.MessageFromSecondary ]: this.onMessageFromSecondary,
+				[ RoomMessageType.EjectedFromRoom ]: this.onEjectedFromRoom,
+				[ RoomMessageType.RequestMemberInfo ]: this.onRequestMemberInfo,
+				[ RoomMessageType.AddRemoteMember ]: this.onAddRemoteMember,
+				[ RoomMessageType.MemberLeft ]: this.onMemberLeft,
 
-	public componentDidMount()
-	{
-	}
-
-	public componentWillUnmount()
-	{
+			} );
 	}
 
 	@bind
 	private async onConnectionStateChange()
 	{
 		let newlyConnected = !this.state.connected && this.client.connected;
-		this.setState( { connected: this.client.connected, currentRoom: null, createdRoom: null } );
+		this.setState( { connected: this.client.connected } );
 		if( newlyConnected )
 		{
-			// try to make our room
-			let res = await this.client.createRoom();
-			if( typeof res == "string" )
+			let res = await this.client.joinRoom( this.props.roomId );
+			if( res == RoomResult.Success )
 			{
-				this.setState( { createdRoom: res as string } );
+				this.setState(
+					{
+						joined: true,
+					}
+				);
 			}
 			else
 			{
-				this.setState( { error: `Failed to create room: ${ RoomResult[ res as number ] }` } );
+				this.setState(
+					{
+						joined: false,
+					}
+				);
 			}
-		}
-	}
-
-	@bind
-	private async onJoinRoom()
-	{
-		let res = await this.client.joinRoom( this.state.createdRoom );
-		if( res == RoomResult.Success )
-		{
-			this.setState(
-				{
-					currentRoom: this.state.createdRoom,
-					error: null,
 				}
-			);
-		}
-		else
-		{
-			this.setState(
-				{
-					error: `Join failed with ${ RoomResult[ res ] }`,
-				}
-			);
-		}
-
-	}
-
-	@bind
-	private async onLeaveRoom()
-	{
-		let res = await this.client.leaveRoom( this.state.createdRoom );
-		if( res == RoomResult.Success )
-		{
-			this.setState(
-				{
-					currentRoom: null,
-					error: null,
-				}
-			);
-		}
-		else
-		{
-			this.setState(
-				{
-					error: `Leave failed with ${ RoomResult[ res ] }`,
-				}
-			);
-		}
-	}
-
-	private renderPanel()
-	{
-		if( !this.state.connected )
-		{
-			return <>
-				<div className="Label">Connecting to server...</div>
-				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-				</>;
-		}
-
-		if( this.state.currentRoom )
-		{
-			return <>
-				<div className="Button" onClick={ this.onLeaveRoom }>Leave Room</div>
-				<div className="Label">Connected to room: { this.state.currentRoom }</div>
-				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-			</>;
-		}
-		else if( this.state.createdRoom )
-		{
-			return <>
-				<div className="Button" onClick={ this.onJoinRoom }>Join Room</div>
-				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-			</>;
-		}
-		else
-		{
-			return <>
-				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-			</>;
-		}
-	}
-
-	private renderUniverses()
-	{
-		if( !this.state.currentRoom )
-			return null;
-
-		let remotes: JSX.Element[] = [];
-		for( let memberId in this.remoteUniverses )
-		{
-			remotes.push( <AvComposedEntity volume={ emptyVolume() } 
-				debugName={ `Remote member ${ memberId }`} 
-				key={ memberId }
-				components={ [ this.remoteUniverses[ memberId ] ] }
-				/> )
-		}
-
-		return (
-			<AvOrigin path="/space/stage">
-				<AvComposedEntity components={ [ this.networkUniverse ] }
-					volume={ infiniteVolume() } debugName="Hand mirror network universe"/> 
-				{ remotes }
-			</AvOrigin> );
 	}
 
 	@bind
@@ -358,7 +260,7 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		let msg: RoomMessage =
 		{
 			type: RoomMessageType.MessageFromPrimary,
-			roomId: this.state.createdRoom,
+			roomId: this.props.roomId,
 			messageIsReliable: reliable,
 			message: event,
 		}
@@ -389,7 +291,6 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 	private onEjectedFromRoom( msg: RoomMessage )
 	{
 		this.remoteUniverses = {};
-		this.setState( { currentRoom: null, error: "EJECTED!" } );
 	}
 	
 	@bind
@@ -398,11 +299,11 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		let response: RoomMessage =
 		{
 			type: RoomMessageType.RequestMemberResponse,
-			roomId: this.state.createdRoom,
+			roomId: this.props.roomId,
 			initInfo: this.networkUniverse.initInfo,
 		}
 
-		this.client.sendMessage( msg );
+		this.client.sendMessage( response );
 	}
 	
 	@bind
@@ -426,7 +327,7 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		let msg: RoomMessage =
 		{
 			type: RoomMessageType.MessageFromSecondary,
-			roomId: this.state.createdRoom,
+			roomId: this.props.roomId,
 			memberId,
 			message: evt,
 			messageIsReliable: reliable,
@@ -442,6 +343,165 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 		this.forceUpdate();
 	}
 	
+
+	render()
+	{
+		if( !this.state.joined )
+			return null;
+
+		let remotes: JSX.Element[] = [];
+		for( let memberId in this.remoteUniverses )
+		{
+			remotes.push( <AvComposedEntity volume={ emptyVolume() } 
+				debugName={ `Remote member ${ memberId }`} 
+				key={ memberId }
+				components={ [ this.remoteUniverses[ memberId ] ] }
+				/> )
+		}
+
+		return (
+			<AvOrigin path="/space/stage">
+				<AvComposedEntity components={ [ this.networkUniverse ] }
+					volume={ infiniteVolume() } debugName="Hand mirror network universe"/> 
+				<AvTransform transform={ this.props.transform }>
+					{ remotes }
+				</AvTransform>
+			</AvOrigin> );
+	}
+
+}
+
+interface SimpleRoomUIProps
+{
+	serverAddress: string;
+}
+
+
+interface SimpleRoomUIState
+{
+	connected: boolean;
+	createdRoom?: string;
+	error?: string;
+	joined: boolean;
+}
+
+class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState >
+{
+	private m_grabbableRef = React.createRef<AvStandardGrabbable>();
+	private client: RoomClient;
+
+	constructor( props: any )
+	{
+		super( props );
+
+		this.state = 
+		{
+			joined: false,
+			connected: false,
+		};
+
+		this.client = new RoomClient( this.props.serverAddress, this.onConnectionStateChange, {} );
+	}
+
+	@bind
+	private async onConnectionStateChange()
+	{
+		let newlyConnected = !this.state.connected && this.client.connected;
+		this.setState( { connected: this.client.connected, createdRoom: null } );
+		if( newlyConnected )
+		{
+			// try to make our room
+			let res = await this.client.createRoom();
+			if( typeof res == "string" )
+			{
+				this.setState( { createdRoom: res as string } );
+			}
+			else
+			{
+				this.setState( { error: `Failed to create room: ${ RoomResult[ res as number ] }` } );
+			}
+		}
+	}
+
+	@bind
+	private async onJoinRoom()
+	{
+		let res = await this.client.joinRoom( this.state.createdRoom );
+		if( res == RoomResult.Success )
+		{
+			this.setState(
+				{
+					joined: true,
+					error: null,
+				}
+			);
+		}
+		else
+		{
+			this.setState(
+				{
+					error: `Join failed with ${ RoomResult[ res ] }`,
+				}
+			);
+		}
+
+	}
+
+	@bind
+	private async onLeaveRoom()
+	{
+		let res = await this.client.leaveRoom( this.state.createdRoom );
+		if( res == RoomResult.Success )
+		{
+			this.setState(
+				{
+					joined: false,
+					error: null,
+				}
+			);
+		}
+		else
+		{
+			this.setState(
+				{
+					error: `Leave failed with ${ RoomResult[ res ] }`,
+				}
+			);
+		}
+	}
+	private renderPanel()
+	{
+		if( !this.state.connected )
+		{
+			return <>
+				<div className="Label">Connecting to server...</div>
+				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
+				</>;
+		}
+
+		if( this.state.joined )
+		{
+			return <>
+				<div className="Button" onClick={ this.onLeaveRoom }>Leave Room</div>
+				<div className="Label">Connected to room: { this.state.createdRoom }</div>
+				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
+			</>;
+		}
+		else if( this.state.createdRoom )
+		{
+			return <>
+				<div className="Button" onClick={ this.onJoinRoom }>Join Room</div>
+				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
+			</>;
+		}
+		else
+		{
+			return <>
+				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
+			</>;
+		}
+	}
+
 	public render()
 	{
 		return (
@@ -454,11 +514,17 @@ class SimpleRoom extends React.Component< {}, SimpleRoomState >
 				</AvTransform>
 				<AvOrigin path="/user/hand/right"/>
 				<AvOrigin path="/user/hand/left"/>
-				{ this.renderUniverses() }
+				{ this.state.joined && <>
+						<SimpleRoom roomId={ this.state.createdRoom } transform={ {} } 
+							serverAddress={ this.props.serverAddress } key="self"/>
+						<SimpleRoom roomId={ this.state.createdRoom } 
+							transform={ { position: { x: 0, y: 1, z: 0 } } } 
+							serverAddress={ this.props.serverAddress } key="mirror"/>
+					</> }
 			</AvStandardGrabbable> );
 	}
 
 }
 
-let main = Av() ? <SimpleRoom/> : <DefaultLanding/>
+let main = Av() ? <SimpleRoomUI serverAddress="ws://localhost:18080" /> : <DefaultLanding/>
 ReactDOM.render( main, document.getElementById( "root" ) );
