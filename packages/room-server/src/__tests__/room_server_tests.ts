@@ -1,3 +1,4 @@
+import { AvVector } from '@aardvarkxr/aardvark-shared';
 import { RoomMessage, RoomMessageType, RoomResult } from '@aardvarkxr/room-shared';
 import { RoomServer } from '../room_server';
 import bind from 'bind-decorator';
@@ -163,6 +164,23 @@ class RoomTestClient
 
 		let resp = await this.waitForMessage();
 		return resp?.result ?? RoomResult.UnknownFailure;
+	}
+
+	public async joinRoomWithMatch( leftHandPosition: AvVector, rightHandPosition: AvVector )
+	{
+		await this.waitForConnect();
+
+		let joinMsg: RoomMessage =
+		{
+			type: RoomMessageType.JoinRoomWithMatch,
+			leftHandPosition,
+			rightHandPosition,
+		};
+
+		this.sendMessage( joinMsg );
+
+		let resp = await this.waitForMessage();
+		return [ resp?.result ?? RoomResult.UnknownFailure, resp.roomId ];
 	}
 
 	public async leaveRoom( roomId: string )
@@ -533,6 +551,40 @@ describe( "RoomServer ", () =>
 		expect( resp?.type ).toBe( RoomMessageType.DestroyRoomResponse );
 		expect( resp?.result ).toBe( RoomResult.Success );
 
+		client1.close();
+		client2.close();
+		done();
+	} );
+
+	it( "two members via match", async ( done ) =>
+	{
+		let client1 = new RoomTestClient( server );
+		let client2 = new RoomTestClient( server );
+		await client1.waitForConnect();
+		await client2.waitForConnect();
+
+		let h1: AvVector = { x: 3, y: 4, z: 5 };
+		let h2: AvVector = { x: 5, y: 4, z: 3 };
+
+		let j1 = client1.joinRoomWithMatch( h1, h2 );
+		let j2 = client2.joinRoomWithMatch( h2, h1 );
+
+		let [ r1, roomId1 ] = await j1;
+		let [ r2, roomId2 ] = await j2;
+
+		expect( r1 ).toBe( RoomResult.Success );
+		expect( r2 ).toBe( RoomResult.Success );
+		expect( roomId1 ).toBe( roomId2 );
+		expect( roomId1 ).not.toBeNull();
+
+		let infoRequestMessage = await client1.waitForMessage();
+		expect( infoRequestMessage?.type ).toBe( RoomMessageType.RequestMemberInfo );
+		expect( infoRequestMessage?.roomId ).toBe( roomId1 );
+		
+		let infoRequestMessage2 = await client2.waitForMessage();
+		expect( infoRequestMessage2?.type ).toBe( RoomMessageType.RequestMemberInfo );
+		expect( infoRequestMessage2?.roomId ).toBe( roomId1 );
+		
 		client1.close();
 		client2.close();
 		done();

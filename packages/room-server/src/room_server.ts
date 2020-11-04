@@ -5,6 +5,8 @@ import * as http from 'http';
 import * as WebSocket from 'ws';
 import { v4 as uuid } from 'uuid';
 import { AddressInfo } from 'net';
+import { HandSample, HandMatcher, MatchResult } from './hand_matcher';
+import { vecFromAvVector } from '@aardvarkxr/aardvark-shared';
 
 interface MemberInfo
 {
@@ -234,6 +236,7 @@ export class Connection
 		this.ws.onclose = this.onClose;
 
 		this.handlers[ RoomMessageType.JoinRoom ] = this.onMsgJoinRoom;
+		this.handlers[ RoomMessageType.JoinRoomWithMatch ] = this.onMsgJoinRoomWithMatch;
 		this.handlers[ RoomMessageType.LeaveRoom ] = this.onMsgLeaveRoom;
 		this.handlers[ RoomMessageType.CreateRoom ] = this.onMsgCreateRoom;
 		this.handlers[ RoomMessageType.DestroyRoom ] = this.onMsgDestroyRoom;
@@ -316,6 +319,28 @@ export class Connection
 		};
 
 		this.sendMessage( response );
+	}
+
+	@bind 
+	private onMsgJoinRoomWithMatch( msg: RoomMessage )
+	{
+		let distance: number;
+		{
+			let leftPos = vecFromAvVector( msg.leftHandPosition );
+			let rightPos = vecFromAvVector( msg.rightHandPosition );
+			let diff = leftPos.subtract( rightPos );
+			distance = diff.length();
+		}
+
+		let sample: HandSample =
+		{
+			leftHeight: msg.leftHandPosition.y,
+			rightHeight: msg.rightHandPosition.y,
+			distance,
+			context: this,
+		}
+
+		this.server.addHandSample( sample );
 	}
 
 	@bind 
@@ -443,6 +468,7 @@ export class RoomServer
 	private connections: Connection[] = [];
 	private options: RoomServerOptions | undefined;
 	private rooms = new Map< string, Room> ();
+	private matcher = new HandMatcher( this.onHandMatch );
 
 	constructor( port?: number, options?: RoomServerOptions )
 	{
@@ -543,4 +569,59 @@ export class RoomServer
 		return RoomResult.Success;
 	}
 
+	public addHandSample( sample: HandSample )
+	{
+		this.matcher.addSample( sample );
+	}
+
+	@bind
+	private onHandMatch( result: MatchResult, contexts: any[] )
+	{
+		switch( result )
+		{
+			case MatchResult.TimedOut:
+			case MatchResult.Replaced:
+			{
+				let resp: RoomMessage =
+				{
+					type: RoomMessageType.JoinRoomWithMatchResponse,
+					result: result == MatchResult.TimedOut ? RoomResult.MatchTimedOut : RoomResult.ClickReplaced,
+				};
+
+				for( let context of contexts )
+				{
+					let conn = context as Connection;
+					conn.sendMessage( resp );
+				}
+			}
+			break;
+
+			case MatchResult.Matched:
+			{
+				let owner = contexts[0] as Connection;
+				let [ result, newRoom ] = this.createRoom( owner );
+				if( result != RoomResult.Success )
+				{
+					this.log( "Somehow failed to make a new room: ", RoomResult[ result ] );
+					break;
+				}
+
+				let resp: RoomMessage =
+				{
+					type: RoomMessageType.JoinRoomWithMatchResponse,
+					result: RoomResult.Success,
+					roomId: newRoom.roomId,
+				};
+
+				for( let context of contexts )
+				{
+					let conn = context as Connection;
+					conn.sendMessage( resp );
+
+					newRoom.join( conn );
+				}
+			}
+			break;
+		}
+	}
 }
