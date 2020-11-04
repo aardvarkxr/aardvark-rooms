@@ -12,6 +12,21 @@
 			"type": "chrome",
 			//"trace":"verbose",
 			"webRoot": "${workspaceFolder}"
+		},
+		{
+			"name": "Debug Jest Tests",
+			"type": "node",
+			"request": "launch",
+			"runtimeArgs": [
+				"--inspect-brk",
+				"${workspaceRoot}/node_modules/jest/bin/jest.js",
+				"--runInBand",
+				"--detectOpenHandles"
+			],
+			"console": "integratedTerminal",
+			"internalConsoleOptions": "neverOpen",
+			"cwd": "${workspaceRoot}/packages/room-server",
+			"port": 9229
 		}
 	]
 }
