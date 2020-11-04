@@ -4,7 +4,7 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@aardvarkxr/*": ["packages/*/src"]
+      "@aardvarkxr/room-shared": ["packages/room-shared/src/shared_index.ts"]
     },
     "jsx": "react",
     "esModuleInterop": true,
