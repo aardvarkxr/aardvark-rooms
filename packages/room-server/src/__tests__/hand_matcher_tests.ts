@@ -1,8 +1,6 @@
 import { HandMatcher, HandSample, MatchResult } from './../hand_matcher';
 
 
-jest.useRealTimers();
-
 
 expect.extend( 
 {
@@ -53,6 +51,7 @@ declare global
 	}
 }
 
+jest.useFakeTimers();
 
 interface Call
 {
@@ -69,10 +68,11 @@ function sample( leftHeight: number, rightHeight: number, distance: number, cont
 	};
 }
 
-describe( "RoomServer ", () =>
+describe( "HandMatcher ", () =>
 {
 	let matcher: HandMatcher;
 	let calls: Call[];
+	let now: number;
 
 	beforeEach( async() =>
 	{
@@ -81,14 +81,23 @@ describe( "RoomServer ", () =>
 		{
 			calls.push( { result, contexts } );
 		} );
+		now = 1000;
 	} );
 
 	afterEach( async () =>
 	{
 		matcher = null;
 		calls = null;
+		jest.clearAllTimers();
 	} );
 
+	const addTime = ( ms: number ) =>
+	{
+		now += ms;
+		jest.advanceTimersByTime( ms );
+	}
+
+	Date.now = jest.fn( () => now );
 
 	it( "replacement", () =>
 	{
@@ -116,6 +125,41 @@ describe( "RoomServer ", () =>
 		expect( calls.length ).toBe( 1 );
 		expect( calls[0].result ).toBe( MatchResult.Matched );
 		expect( calls[0].contexts ).toHaveContexts( [ s1.context, s2.context ] );
+	} );
+
+	it( "timeout", () =>
+	{
+		let s1 = sample( 3, 4, 2 );
+
+		matcher.addSample( s1 );
+		expect( calls.length ).toBe( 0 );
+
+		addTime( 2000 );
+
+		expect( calls.length ).toBe( 1 );
+		expect( calls[0].result ).toBe( MatchResult.TimedOut );
+		expect( calls[0].contexts ).toHaveContexts( [ s1.context ] );
+	} );
+
+	it( "match with delta", () =>
+	{
+		let s1 = sample( 3, 4, 2 );
+		let s2 = sample( 4.01, 2.99, 1.01 );
+		let s3 = sample( 4.01, 2.99, 2.01 );
+
+		matcher.addSample( s1 );
+		matcher.addSample( s2 );
+		expect( calls.length ).toBe( 0 );
+		matcher.addSample( s3 );
+		expect( calls.length ).toBe( 1 );
+		expect( calls[0].result ).toBe( MatchResult.Matched );
+		expect( calls[0].contexts ).toHaveContexts( [ s1.context, s3.context ] );
+		calls = [];
+
+		addTime( 2000 )
+		expect( calls.length ).toBe( 1 );
+		expect( calls[0].result ).toBe( MatchResult.TimedOut );
+		expect( calls[0].contexts ).toHaveContexts( [ s2.context ] );
 	} );
 
 
