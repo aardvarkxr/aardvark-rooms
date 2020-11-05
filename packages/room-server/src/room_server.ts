@@ -571,6 +571,7 @@ export class RoomServer
 
 	public addHandSample( sample: HandSample )
 	{
+		this.log( `Added hand sample at ${ sample.leftHeight }, ${ sample.rightHeight }` );
 		this.matcher.addSample( sample );
 	}
 
