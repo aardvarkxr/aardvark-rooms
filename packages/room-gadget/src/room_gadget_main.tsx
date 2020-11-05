@@ -38,7 +38,7 @@ class RoomClient
 	{
 		let msg = JSON.parse( event.data as string ) as RoomMessage;
 		
-		console.log( "Received message of type ", RoomMessageType[ msg.type ] );
+		//console.log( "Received message of type ", RoomMessageType[ msg.type ] );
 
 		let handler = this.messageHanders[ msg.type ];
 		if( handler )
@@ -77,7 +77,7 @@ class RoomClient
 		if( !this.connected )
 			return false;
 
-		console.log( "Sent message of type ", RoomMessageType[ msg.type ] );
+		//console.log( "Sent message of type ", RoomMessageType[ msg.type ] );
 		this.ws.send( JSON.stringify( msg ) );
 		return true;
 	}
@@ -221,6 +221,7 @@ interface SimpleRoomProps
 
 	serverAddress: string;
 	transform: AvNodeTransform;
+	onUpdate?: ()=>void;
 }
 
 interface SimpleRoomState
@@ -256,6 +257,15 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 
 			} );
 	}
+
+	public componentDidUpdate( prevProps: SimpleRoomProps, prevState: SimpleRoomState )
+	{
+		if( prevState.joined != this.state.joined || prevState.roomId != this.state.roomId )
+		{
+			this.props.onUpdate?.();
+		}
+	}
+
 
 	@bind
 	private async onConnectionStateChange()
@@ -298,7 +308,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 				}
 	}
 
-	private get roomId(): string
+	public get roomId(): string
 	{
 		return this.props.roomId ?? this.state.roomId;
 	}
@@ -445,6 +455,7 @@ interface SimpleRoomUIState
 class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState >
 {
 	private m_grabbableRef = React.createRef<AvStandardGrabbable>();
+	private matchRoom = React.createRef<SimpleRoom>();
 	private client: RoomClient;
 
 	constructor( props: any )
@@ -543,6 +554,18 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 			);
 		}
 	}
+
+	@bind
+	private async onLeaveMatchRoom()
+	{
+		this.setState(
+			{
+				leftPosition: null,
+				rightPosition: null,
+			}
+		);
+	}
+
 	private renderPanel()
 	{
 		if( !this.state.connected )
@@ -558,6 +581,16 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 			return <>
 				<div className="Button" onClick={ this.onLeaveRoom }>Leave Room</div>
 				<div className="Label">Connected to room: { this.state.createdRoom }</div>
+				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
+			</>;
+		}
+		else if( this.state.leftPosition && this.state.rightPosition )
+		{
+			return <>
+				<div className="Button" onClick={ this.onLeaveMatchRoom }>Leave Match Room</div>
+				<div className="Label">
+					Connected to room from match: {} this.matchRoom.current?.roomId }
+				</div>
 				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 			</>;
 		}
@@ -647,11 +680,13 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 							serverAddress={ this.props.serverAddress } key="mirror"/>
 					</> }
 				{ this.state.leftPosition && this.state.rightPosition && <>
-						<SimpleRoom 
+						<SimpleRoom ref={ this.matchRoom }
 							leftPosition={ this.state.leftPosition } 
 							rightPosition={ this.state.rightPosition }
 							transform={ {} } 
-							serverAddress={ this.props.serverAddress } key="self_match"/>
+							serverAddress={ this.props.serverAddress } 
+							key="self_match"
+							onUpdate={ () => this.forceUpdate() }/>
 						<SimpleRoom 
 							leftPosition={ this.state.rightPosition } 
 							rightPosition={ this.state.leftPosition }
