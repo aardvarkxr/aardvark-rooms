@@ -589,7 +589,7 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 			return <>
 				<div className="Button" onClick={ this.onLeaveMatchRoom }>Leave Match Room</div>
 				<div className="Label">
-					Connected to room from match: {} this.matchRoom.current?.roomId }
+					Connected to room from match: { this.matchRoom.current?.roomId }
 				</div>
 				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 			</>;
