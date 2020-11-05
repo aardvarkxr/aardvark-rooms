@@ -10,6 +10,7 @@
 			"sourceMaps": true,
 			"request": "attach",
 			"type": "chrome",
+			"targetSelection": "pick",
 			//"trace":"verbose",
 			"webRoot": "${workspaceFolder}"
 		},
