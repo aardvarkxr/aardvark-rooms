@@ -1,5 +1,5 @@
-import { AvComposedEntity, AvOrigin, AvPanel, AvStandardGrabbable, AvTransform, DefaultLanding, GrabbableStyle, NetworkUniverseComponent, RemoteUniverseComponent } from '@aardvarkxr/aardvark-react';
-import { Av, AvNodeTransform, emptyVolume, g_builtinModelBox, infiniteVolume } from '@aardvarkxr/aardvark-shared';
+import { ActiveInterface, AvComposedEntity, AvGadget, AvInterfaceEntity, AvOrigin, AvPanel, AvStandardGrabbable, AvTransform, DefaultLanding, GrabbableStyle, NetworkUniverseComponent, RemoteUniverseComponent } from '@aardvarkxr/aardvark-react';
+import { Av, AvNodeTransform, AvVector, EAction, EHand, emptyVolume, g_builtinModelBox, infiniteVolume } from '@aardvarkxr/aardvark-shared';
 import { RoomResult, RoomMessage, RoomMessageType } from '@aardvarkxr/room-shared';
 import bind from 'bind-decorator';
 import * as React from 'react';
@@ -163,6 +163,25 @@ class RoomClient
 		return resp?.result ?? RoomResult.UnknownFailure;
 	}
 
+	public async joinRoomWithMatch( leftHandPosition: AvVector, rightHandPosition: AvVector ): 
+		Promise< [ RoomResult, null | string ] >
+	{
+		if( !this.connected )
+			return [ RoomResult.Disconnected, null ];
+
+		let joinMsg: RoomMessage =
+		{
+			type: RoomMessageType.JoinRoomWithMatch,
+			leftHandPosition,
+			rightHandPosition,
+		};
+
+		this.sendMessage( joinMsg );
+
+		let resp = await this.waitForMessage();
+		return [ resp?.result ?? RoomResult.UnknownFailure, resp.roomId ];
+	}
+
 	public async leaveRoom( roomId: string ): Promise<RoomResult>
 	{
 		if( !this.connected )
@@ -189,7 +208,17 @@ class RoomClient
 
 interface SimpleRoomProps
 {
-	roomId: string;
+	/** If roomId is specified the simple room will try to join
+	 *  that room.
+	 */
+	roomId?: string;
+
+	/** If left and right position are specified, the simple room
+	 * will try to match-make with that gesture on another user
+	 */
+	leftPosition?: AvVector;
+	rightPosition?: AvVector;
+
 	serverAddress: string;
 	transform: AvNodeTransform;
 }
@@ -198,6 +227,7 @@ interface SimpleRoomState
 {
 	connected: boolean;
 	joined: boolean;
+	roomId?: string;
 }
 
 class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
@@ -234,7 +264,21 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 		this.setState( { connected: this.client.connected } );
 		if( newlyConnected )
 		{
-			let res = await this.client.joinRoom( this.props.roomId );
+			let res: RoomResult;
+			if( this.props.roomId )
+			{
+				res = await this.client.joinRoom( this.props.roomId );
+			}
+			else
+			{
+				let[ result, roomId ] = await this.client.joinRoomWithMatch( this.props.leftPosition, 
+					this.props.rightPosition );
+				res = result;
+				if( res == RoomResult.Success )
+				{
+					this.setState( { roomId } );
+				}
+			}
 			if( res == RoomResult.Success )
 			{
 				this.setState(
@@ -254,13 +298,18 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 				}
 	}
 
+	private get roomId(): string
+	{
+		return this.props.roomId ?? this.state.roomId;
+	}
+
 	@bind
 	private onNetworkEvent( event: object, reliable: boolean )
 	{
 		let msg: RoomMessage =
 		{
 			type: RoomMessageType.MessageFromPrimary,
-			roomId: this.props.roomId,
+			roomId: this.roomId,
 			messageIsReliable: reliable,
 			message: event,
 		}
@@ -299,7 +348,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 		let response: RoomMessage =
 		{
 			type: RoomMessageType.RequestMemberResponse,
-			roomId: this.props.roomId,
+			roomId: this.roomId,
 			initInfo: this.networkUniverse.initInfo,
 		}
 
@@ -327,7 +376,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 		let msg: RoomMessage =
 		{
 			type: RoomMessageType.MessageFromSecondary,
-			roomId: this.props.roomId,
+			roomId: this.roomId,
 			memberId,
 			message: evt,
 			messageIsReliable: reliable,
@@ -383,6 +432,14 @@ interface SimpleRoomUIState
 	createdRoom?: string;
 	error?: string;
 	joined: boolean;
+	leftPressed: boolean;
+	rightPressed: boolean;
+
+	leftGrab?: ActiveInterface;
+	rightGrab?: ActiveInterface;
+
+	leftPosition?: AvVector;
+	rightPosition?: AvVector;
 }
 
 class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState >
@@ -398,9 +455,26 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 		{
 			joined: false,
 			connected: false,
+
+			leftPressed: false,
+			rightPressed: false,
 		};
 
 		this.client = new RoomClient( this.props.serverAddress, this.onConnectionStateChange, {} );
+
+		AvGadget.instance().listenForActionState( EAction.Grab, EHand.Left, 
+			() => { 
+				this.setState( { leftPressed: true } );
+				console.log( "left pressed" );
+			}, 
+			() => { this.setState( { leftPressed: false, leftGrab: null } ) } );
+		AvGadget.instance().listenForActionState( EAction.Grab, EHand.Right, 
+			() => 
+			{ 
+				this.setState( { rightPressed: true } );
+				console.log( "right pressed" );
+			}, 
+			() => { this.setState( { rightPressed: false, rightGrab: null } ) } );
 	}
 
 	@bind
@@ -502,6 +576,44 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 		}
 	}
 
+	@bind
+	private onLeftGrab( activeGrab: ActiveInterface )
+	{
+		this.setState( { leftGrab: activeGrab } );
+
+		this.checkForClickStart();
+
+		activeGrab.onEnded( () =>
+		{
+			this.setState( { leftGrab: null } );
+		} );
+	}
+
+	@bind
+	private onRightGrab( activeGrab: ActiveInterface )
+	{
+		this.setState( { rightGrab: activeGrab } );
+
+		this.checkForClickStart();
+		
+		activeGrab.onEnded( () =>
+		{
+			this.setState( { rightGrab: null } );
+		})
+	}
+
+	private checkForClickStart()
+	{
+		if( this.state.leftGrab && this.state.rightGrab )
+		{
+			this.setState( 
+				{ 
+					leftPosition: this.state.leftGrab.selfFromPeer.position,
+					rightPosition: this.state.rightGrab.selfFromPeer.position,
+				} );
+		}
+	}
+
 	public render()
 	{
 		return (
@@ -512,14 +624,39 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 						{ this.renderPanel() }
 					</AvPanel>
 				</AvTransform>
-				<AvOrigin path="/user/hand/right"/>
-				<AvOrigin path="/user/hand/left"/>
+
+				<AvOrigin path="/space/stage">
+					<AvInterfaceEntity volume={ [ infiniteVolume() ] } 
+						receives={ [{iface: "room-grab@1" }]} />
+				</AvOrigin>
+
+				<AvOrigin path="/user/hand/left">
+					{ this.state.leftPressed && <AvInterfaceEntity volume={ [ infiniteVolume() ] } 
+						transmits={ [ { iface: "room-grab@1", processor: this.onLeftGrab } ] }/>}
+				</AvOrigin>
+				<AvOrigin path="/user/hand/right">
+					{ this.state.rightPressed && <AvInterfaceEntity volume={ [ infiniteVolume() ] } 
+						transmits={ [ { iface: "room-grab@1", processor: this.onRightGrab } ] }/>}
+				</AvOrigin>
+
 				{ this.state.joined && <>
 						<SimpleRoom roomId={ this.state.createdRoom } transform={ {} } 
 							serverAddress={ this.props.serverAddress } key="self"/>
 						<SimpleRoom roomId={ this.state.createdRoom } 
 							transform={ { position: { x: 0, y: 1, z: 0 } } } 
 							serverAddress={ this.props.serverAddress } key="mirror"/>
+					</> }
+				{ this.state.leftPosition && this.state.rightPosition && <>
+						<SimpleRoom 
+							leftPosition={ this.state.leftPosition } 
+							rightPosition={ this.state.rightPosition }
+							transform={ {} } 
+							serverAddress={ this.props.serverAddress } key="self_match"/>
+						<SimpleRoom 
+							leftPosition={ this.state.rightPosition } 
+							rightPosition={ this.state.leftPosition }
+							transform={ { position: { x: 0, y: 1, z: 0 } } } 
+							serverAddress={ this.props.serverAddress } key="mirror_match"/>
 					</> }
 			</AvStandardGrabbable> );
 	}
