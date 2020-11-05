@@ -7,6 +7,7 @@ import { v4 as uuid } from 'uuid';
 import { AddressInfo } from 'net';
 import { HandSample, HandMatcher, MatchResult } from './hand_matcher';
 import { vecFromAvVector } from '@aardvarkxr/aardvark-shared';
+import { vec3 } from '@tlaukkan/tsm';
 
 interface MemberInfo
 {
@@ -328,7 +329,7 @@ export class Connection
 		{
 			let leftPos = vecFromAvVector( msg.leftHandPosition );
 			let rightPos = vecFromAvVector( msg.rightHandPosition );
-			let diff = leftPos.subtract( rightPos );
+			let diff = new vec3( [ rightPos.x - leftPos.x, rightPos.y - leftPos.y, rightPos.z - leftPos.z ] );
 			distance = diff.length();
 		}
 
