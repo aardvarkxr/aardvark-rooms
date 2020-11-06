@@ -6,7 +6,7 @@ import * as WebSocket from 'ws';
 import { v4 as uuid } from 'uuid';
 import { AddressInfo } from 'net';
 import { HandSample, HandMatcher, MatchResult } from './hand_matcher';
-import { vecFromAvVector } from '@aardvarkxr/aardvark-shared';
+import { AvVector, vecFromAvVector } from '@aardvarkxr/aardvark-shared';
 import { vec3 } from '@tlaukkan/tsm';
 
 interface MemberInfo
@@ -227,6 +227,8 @@ export class Connection
 	private handlers: { [ msgType: number ]: ( msg: RoomMessage ) => void } = {};
 	private server: RoomServer;
 	private rooms: Room[] = [];
+	private leftHandPosition: AvVector = null;
+	private rightHandPosition: AvVector = null;
 
 	constructor( ws: WebSocket, server: RoomServer )
 	{
@@ -340,6 +342,9 @@ export class Connection
 			distance,
 			context: this,
 		}
+
+		this.leftHandPosition = msg.leftHandPosition;
+		this.rightHandPosition = msg.rightHandPosition;
 
 		this.server.addHandSample( sample );
 	}
@@ -576,6 +581,49 @@ export class RoomServer
 		this.matcher.addSample( sample );
 	}
 
+	private processMatch( contexts: any[] )
+	{
+		// TODO:
+		// remember the actual positions. We're going to need them when a match happens
+		// When figuring out a match, see if either user is already in a room.
+		//   If they're in the same room, we're just updating transforms. Pick one user, compute relative
+		//     transform form that user to the other user, update other user's transform. (This is essentially
+		//     the same as leaving the room and then using the "one user in room" case, just with less 
+		//     thrashing of gadgets.)
+		//   If one of them is in the room, the second user us joining the first user's room. Compute
+		//     relative transform, multiply that by the first user's room transform, and that's the 
+		//     second user's transform in the room. Join the room with that
+		//   If neither is in a room, create a new room using the first user's right hand and y=0 plane
+		//     as the center of the room (so their transform relative to the room is identity) and then
+		//     join the room as the second user just like you would in the "one in room" case
+		//   If each user is in their own room, pick the user who is in the room with the largest number 
+		//     of members, have the other user leave their room and then proceed as though only one was 
+		//     in a room.
+
+		let owner = contexts[0] as Connection;
+		let [ result, newRoom ] = this.createRoom( owner );
+		if( result != RoomResult.Success )
+		{
+			this.log( "Somehow failed to make a new room: ", RoomResult[ result ] );
+			return;
+		}
+
+		let resp: RoomMessage =
+		{
+			type: RoomMessageType.JoinRoomWithMatchResponse,
+			result: RoomResult.Success,
+			roomId: newRoom.roomId,
+		};
+
+		for( let context of contexts )
+		{
+			let conn = context as Connection;
+			conn.sendMessage( resp );
+
+			newRoom.join( conn );
+		}
+	}
+	
 	@bind
 	private onHandMatch( result: MatchResult, contexts: any[] )
 	{
@@ -600,28 +648,7 @@ export class RoomServer
 
 			case MatchResult.Matched:
 			{
-				let owner = contexts[0] as Connection;
-				let [ result, newRoom ] = this.createRoom( owner );
-				if( result != RoomResult.Success )
-				{
-					this.log( "Somehow failed to make a new room: ", RoomResult[ result ] );
-					break;
-				}
-
-				let resp: RoomMessage =
-				{
-					type: RoomMessageType.JoinRoomWithMatchResponse,
-					result: RoomResult.Success,
-					roomId: newRoom.roomId,
-				};
-
-				for( let context of contexts )
-				{
-					let conn = context as Connection;
-					conn.sendMessage( resp );
-
-					newRoom.join( conn );
-				}
+				this.processMatch( contexts );
 			}
 			break;
 		}
