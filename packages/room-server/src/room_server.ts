@@ -6,8 +6,8 @@ import * as WebSocket from 'ws';
 import { v4 as uuid } from 'uuid';
 import { AddressInfo } from 'net';
 import { HandSample, HandMatcher, MatchResult } from './hand_matcher';
-import { AvVector, vecFromAvVector, AvNodeTransform } from '@aardvarkxr/aardvark-shared';
-import { vec3 } from '@tlaukkan/tsm';
+import { AvVector, vecFromAvVector, AvNodeTransform, minimalToMat4Transform, nodeTransformToMat4, nodeTransformFromMat4, rotationMatFromEulerDegrees, translateMat } from '@aardvarkxr/aardvark-shared';
+import { mat4, vec3 } from '@tlaukkan/tsm';
 
 interface MemberInfo
 {
@@ -53,6 +53,20 @@ class Room
 	private findMemberById( memberId: number )
 	{
 		return this.members.find( ( value: MemberInfo ) => value.memberId == memberId );
+	}
+
+	public joinViaHost( newMember: Connection, host: Connection, hostFromMember: mat4 )
+	{
+		let hostInfo = this.findMember( host );
+		if( !hostInfo )
+		{
+			this.server.log( "Couldn't find host in room when adding connect", this.roomId );
+			return;
+		}
+
+		let roomFromHost = nodeTransformToMat4( hostInfo.roomFromMember );
+		let roomFromMember = mat4.product( roomFromHost, hostFromMember, new mat4() );
+		return this.join( newMember, nodeTransformFromMat4( roomFromMember ) );
 	}
 
 	public join( newMember: Connection, roomFromMember?: AvNodeTransform )
@@ -237,9 +251,9 @@ export class Connection
 	private ws:WebSocket;
 	private handlers: { [ msgType: number ]: ( msg: RoomMessage ) => void } = {};
 	private server: RoomServer;
-	private room: Room;
-	private leftHandPosition: AvVector = null;
-	private rightHandPosition: AvVector = null;
+	public room: Room;
+	public leftHandPosition: AvVector = null;
+	public rightHandPosition: AvVector = null;
 
 	constructor( ws: WebSocket, server: RoomServer )
 	{
@@ -547,29 +561,78 @@ export class RoomServer
 		//   If each user is in their own room, pick the user who is in the room with the largest number 
 		//     of members, have the other user leave their room and then proceed as though only one was 
 		//     in a room.
-
-		let owner = contexts[0] as Connection;
-		let [ result, newRoom ] = this.createRoom( owner );
-		if( result != RoomResult.Success )
+		if( contexts.length != 2 )
 		{
-			this.log( "Somehow failed to make a new room: ", RoomResult[ result ] );
+			this.log( "Somehow we got other-than-2 contexts on a match" );
 			return;
 		}
+
+		let a = contexts[0] as Connection;
+		let b = contexts[1] as Connection;
+
+		let host: Connection;
+		let joiner: Connection;
+		if( a.room.members.length > b.room.members.length )
+		{
+			host = a;
+			joiner = b;
+		}
+		else
+		{
+			host = b;
+			joiner = a;
+		}
+
+		if( joiner.room == host.room )
+		{
+			this.log( "Need to add support for repositioning within a room" );
+			return;
+		}
+
+		// figure out the transform from joiner to host
+		let joinerLeft = vecFromAvVector( joiner.leftHandPosition );
+		let joinerRight = vecFromAvVector( joiner.rightHandPosition );
+		let hostLeft = vecFromAvVector( host.leftHandPosition );
+		let hostRight = vecFromAvVector( host.rightHandPosition );
+
+		let hostFromJoinerTranslation = vec3.difference( hostRight, joinerLeft, new vec3() );
+
+		function yawFromTwoPoints( start: vec3, end: vec3 ): number
+		{
+			let diff = vec3.difference( end, start, new vec3() );
+			diff.y = 0;
+
+			// the diff can't be vertical and have this really work
+			if( diff.length() < 0.001 )
+			{
+				return 0;
+			}
+
+			let normalizedDiff = diff.normalize( new vec3() );
+			return Math.atan2( normalizedDiff.y, normalizedDiff.x );
+		}
+
+		let hostYaw = yawFromTwoPoints( hostRight, hostLeft );
+		let joinerYaw = yawFromTwoPoints( joinerRight, joinerLeft );
+		let hostFromJoinerYaw = joinerYaw - hostYaw + Math.PI; 
+
+		let hostFromJoinerRotation = rotationMatFromEulerDegrees( 
+			new vec3( [ 0, hostFromJoinerYaw * 180 / Math.PI, 0 ] ) );
+		let hostFromJoinerTranslationMat = translateMat( hostFromJoinerTranslation );
 
 		let resp: RoomMessage =
 		{
 			type: RoomMessageType.JoinRoomWithMatchResponse,
 			result: RoomResult.Success,
-			roomId: newRoom.roomId,
+			roomId: host.room.roomId,
 		};
 
-		for( let context of contexts )
-		{
-			let conn = context as Connection;
-			conn.sendMessage( resp );
+		host.sendMessage( resp );
+		joiner.sendMessage( resp );
 
-			newRoom.join( conn );
-		}
+		joiner.room.leave( joiner );
+		host.room.joinViaHost( joiner, host, mat4.product( hostFromJoinerTranslationMat, hostFromJoinerRotation,
+			new mat4() ) );
 	}
 
 	@bind

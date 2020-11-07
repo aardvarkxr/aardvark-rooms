@@ -1,6 +1,7 @@
 import { ActiveInterface, AvComposedEntity, AvGadget, AvInterfaceEntity, AvOrigin, AvPanel, AvStandardGrabbable, AvTransform, DefaultLanding, GrabbableStyle, NetworkUniverseComponent, RemoteUniverseComponent } from '@aardvarkxr/aardvark-react';
-import { Av, AvNodeTransform, AvVector, EAction, EHand, emptyVolume, g_builtinModelBox, infiniteVolume } from '@aardvarkxr/aardvark-shared';
+import { Av, AvNodeTransform, AvVector, EAction, EHand, emptyVolume, g_builtinModelBox, infiniteVolume, nodeTransformFromMat4, nodeTransformToMat4 } from '@aardvarkxr/aardvark-shared';
 import { RoomResult, RoomMessage, RoomMessageType } from '@aardvarkxr/room-shared';
+import { mat4 } from '@tlaukkan/tsm';
 import bind from 'bind-decorator';
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
@@ -180,11 +181,17 @@ interface SimpleRoomState
 	roomFromMember?: AvNodeTransform;
 }
 
+interface RemoteMember
+{
+	universe: RemoteUniverseComponent;
+	roomFromMember?: AvNodeTransform;
+}
+
 class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 {
 	private client: RoomClient;
 	private networkUniverse = new NetworkUniverseComponent( this.onNetworkEvent );
-	private remoteUniverses: { [memberId: number]: RemoteUniverseComponent } = {};
+	private remoteMembers: { [memberId: number]: RemoteMember } = {};
 
 	constructor( props: any )
 	{
@@ -290,14 +297,14 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 	@bind
 	private onMessageFromPrimary( msg: RoomMessage )
 	{
-		let remoteUniverse = this.remoteUniverses[ msg.memberId ];
-		if( !remoteUniverse )
+		let remoteMember = this.remoteMembers[ msg.memberId ];
+		if( !remoteMember )
 		{
 			console.log( "Received MessageFromPrimary for unknown remote universe", msg.memberId );
 			return;
 		}
 
-		remoteUniverse.networkEvent( msg.message );
+		remoteMember.universe.networkEvent( msg.message );
 	}
 	
 	@bind
@@ -309,7 +316,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 	@bind
 	private onEjectedFromRoom( msg: RoomMessage )
 	{
-		this.remoteUniverses = {};
+		this.remoteMembers = {};
 	}
 	
 	@bind
@@ -328,16 +335,23 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 	@bind
 	private onAddRemoteMember( msg: RoomMessage )
 	{
-		if( this.remoteUniverses[ msg.memberId ] )
+		if( this.remoteMembers[ msg.memberId ] )
 		{
 			console.log( "Received AddRemoteMember for member which already existed. Discarding the old member",
 				msg.memberId );
-			delete this.remoteUniverses[ msg.memberId ];
+			delete this.remoteMembers[ msg.memberId ];
 		}
 
 		let memberId = msg.memberId;
-		this.remoteUniverses[ msg.memberId ] = new RemoteUniverseComponent( msg.initInfo,
-			( evt: object, reliable: boolean ) => { this.sendSecondaryMessage( memberId, evt, reliable ) } );
+		let universe = new RemoteUniverseComponent( msg.initInfo,
+			( evt: object, reliable: boolean ) => { this.sendSecondaryMessage( memberId, evt, reliable ) } ); 
+		let remoteMember =
+		{
+			universe,
+			roomFromMember: msg.roomFromMember,
+		}
+		
+		this.remoteMembers[ msg.memberId ] = remoteMember;
 		this.forceUpdate();
 	}
 	
@@ -358,10 +372,9 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 	@bind
 	private onMemberLeft( msg: RoomMessage )
 	{
-		delete this.remoteUniverses[ msg.memberId ];
+		delete this.remoteMembers[ msg.memberId ];
 		this.forceUpdate();
 	}
-	
 
 	render()
 	{
@@ -369,25 +382,30 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 			return null;
 
 		let remotes: JSX.Element[] = [];
-		for( let memberId in this.remoteUniverses )
+		for( let memberId in this.remoteMembers )
 		{
-			remotes.push( <AvComposedEntity volume={ emptyVolume() } 
-				debugName={ `Remote member ${ memberId }`} 
-				key={ memberId }
-				components={ [ this.remoteUniverses[ memberId ] ] }
-				/> )
+			let remoteMember = this.remoteMembers[ memberId ];
+			remotes.push( 
+				<AvTransform key={ memberId } transform={ remoteMember.roomFromMember }>
+					<AvComposedEntity volume={ emptyVolume() } 
+						debugName={ `Remote member ${ memberId }`} 
+						key={ memberId }
+						components={ [ remoteMember.universe ] }
+						/> 
+				</AvTransform>)
 		}
+
+		let localMemberFromRoom = nodeTransformToMat4( this.state.roomFromMember ).inverse();
 
 		return (
 			<AvOrigin path="/space/stage">
 				<AvComposedEntity components={ [ this.networkUniverse ] }
-					volume={ infiniteVolume() } debugName="Hand mirror network universe"/> 
-				<AvTransform transform={ this.props.transform }>
+					volume={ infiniteVolume() } debugName="simple room network universe"/> 
+				<AvTransform transform={ nodeTransformFromMat4( localMemberFromRoom ) }>
 					{ remotes }
 				</AvTransform>
 			</AvOrigin> );
 	}
-
 }
 
 interface SimpleRoomUIProps

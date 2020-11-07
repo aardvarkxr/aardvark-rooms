@@ -41,6 +41,7 @@
 				"@aardvarkxr/aardvark-react": "^1.3.0",
 				"@aardvarkxr/aardvark-shared": "^1.3.0",
 				"@aardvarkxr/room-shared": "^0.0.1",
+				"@tlaukkan/tsm": "^0.8.5",
 				"bind-decorator": "^1.0.11",
 				"react": "^16.13.1",
 				"react-dom": "^16.13.1"
