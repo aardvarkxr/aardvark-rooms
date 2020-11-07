@@ -1,4 +1,4 @@
-import { AvVector } from '@aardvarkxr/aardvark-shared';
+import { AvVector, AvNodeTransform } from '@aardvarkxr/aardvark-shared';
 
 export enum RoomMessageType
 {
@@ -6,16 +6,10 @@ export enum RoomMessageType
 
 	JoinRoom 				= 100,
 	JoinRoomResponse 		= 101,
-	LeaveRoom 				= 102,
-	LeaveRoomResponse 		= 103,
-	JoinRoomWithMatch		= 104,
-	JoinRoomWithMatchResponse = 105,
+	JoinRoomWithMatch		= 102,
+	JoinRoomWithMatchResponse = 103,
 
-	CreateRoom 				= 201,
-	CreateRoomResponse 		= 202,
-	DestroyRoom 			= 203,
-	DestroyRoomResponse 	= 204,	
-
+	UpdateRoomInfo			= 300,
 	EjectedFromRoom 		= 301,
 	RequestMemberInfo 		= 302,
 	RequestMemberResponse 	= 303,
@@ -51,6 +45,7 @@ export interface RoomMessage
 	initInfo?: object;
 	message?: object;
 	messageIsReliable?: boolean;
+	roomFromMember?: AvNodeTransform;
 
 	// These fields are used for JoinRoomFromClick messages
 	leftHandPosition?: AvVector;

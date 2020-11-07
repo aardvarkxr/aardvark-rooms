@@ -6,7 +6,7 @@ import * as WebSocket from 'ws';
 import { v4 as uuid } from 'uuid';
 import { AddressInfo } from 'net';
 import { HandSample, HandMatcher, MatchResult } from './hand_matcher';
-import { AvVector, vecFromAvVector } from '@aardvarkxr/aardvark-shared';
+import { AvVector, vecFromAvVector, AvNodeTransform } from '@aardvarkxr/aardvark-shared';
 import { vec3 } from '@tlaukkan/tsm';
 
 interface MemberInfo
@@ -14,6 +14,7 @@ interface MemberInfo
 	connection: Connection;
 	peersToCreate: Connection[];
 	memberId: number;
+	roomFromMember: AvNodeTransform;
 }
 
 class Room
@@ -54,7 +55,7 @@ class Room
 		return this.members.find( ( value: MemberInfo ) => value.memberId == memberId );
 	}
 
-	public join( newMember: Connection )
+	public join( newMember: Connection, roomFromMember?: AvNodeTransform )
 	{
 		if( this.findMemberIndex( newMember ) != -1 )
 		{
@@ -83,10 +84,19 @@ class Room
 		{
 			connection: newMember,
 			memberId: this.nextMemberId++,
+			roomFromMember: roomFromMember ?? {},
 			peersToCreate: this.members.map( ( value ) => value.connection ),
 		};
-
+		
 		this.members.push( newMemberInfo );
+
+		let roomInfoMsg: RoomMessage =
+		{
+			type: RoomMessageType.UpdateRoomInfo,
+			roomId: this.roomId,
+			roomFromMember: newMemberInfo.roomFromMember,
+		}	
+		newMember.sendMessage( roomInfoMsg );
 
 		return RoomResult.Success;
 	}
@@ -146,6 +156,7 @@ class Room
 			type: RoomMessageType.AddRemoteMember,
 			roomId: this.roomId,
 			memberId: memberInfo.memberId,
+			roomFromMember: memberInfo.roomFromMember,
 			initInfo: initInfo,
 		}
 		for( let peer of memberInfo.peersToCreate )
@@ -226,7 +237,7 @@ export class Connection
 	private ws:WebSocket;
 	private handlers: { [ msgType: number ]: ( msg: RoomMessage ) => void } = {};
 	private server: RoomServer;
-	private rooms: Room[] = [];
+	private room: Room;
 	private leftHandPosition: AvVector = null;
 	private rightHandPosition: AvVector = null;
 
@@ -240,12 +251,29 @@ export class Connection
 
 		this.handlers[ RoomMessageType.JoinRoom ] = this.onMsgJoinRoom;
 		this.handlers[ RoomMessageType.JoinRoomWithMatch ] = this.onMsgJoinRoomWithMatch;
-		this.handlers[ RoomMessageType.LeaveRoom ] = this.onMsgLeaveRoom;
-		this.handlers[ RoomMessageType.CreateRoom ] = this.onMsgCreateRoom;
-		this.handlers[ RoomMessageType.DestroyRoom ] = this.onMsgDestroyRoom;
 		this.handlers[ RoomMessageType.RequestMemberResponse ] = this.onMsgRequestMemberResponse;
 		this.handlers[ RoomMessageType.MessageFromPrimary ] = this.onMsgMessageFromPrimary;
 		this.handlers[ RoomMessageType.MessageFromSecondary ] = this.onMsgMessageFromSecondary;
+
+		// every connection is in a room all the time. They start in a room by themselves,
+		// standing at the origin
+		let [ res, room ] = server.createRoom( this );
+		if( res != RoomResult.Success )
+		{
+			server.log( "Somehow failed to create new room for incoming connection", RoomResult[ res ] );
+		}
+		else
+		{
+			res = room.join( this );
+			if( res != RoomResult.Success )
+			{
+				server.log( "Somehow failed to join new room for incoming connection", RoomResult[ res ] );
+			}
+			else
+			{
+				this.room = room;
+			}
+		}
 	}
 
 	public sendMessage( msg: RoomMessage )
@@ -282,11 +310,8 @@ export class Connection
 	@bind
 	private onClose( evt: WebSocket.CloseEvent )
 	{
-		for( let room of this.rooms )
-		{
-			room.leave( this );
-		}
-		this.rooms = [];
+		this.room?.leave( this );
+		this.room = null;
 	}
 
 	@bind 
@@ -310,7 +335,7 @@ export class Connection
 
 				if( result == RoomResult.Success )
 				{
-					this.rooms.push( room );
+					this.room = room;
 				}
 			}
 		}
@@ -347,83 +372,6 @@ export class Connection
 		this.rightHandPosition = msg.rightHandPosition;
 
 		this.server.addHandSample( sample );
-	}
-
-	@bind 
-	private onMsgLeaveRoom( msg: RoomMessage )
-	{
-		let result: RoomResult;
-		if( !msg.roomId )
-		{
-			result = RoomResult.InvalidParameters;
-		}
-		else
-		{
-			let room = this.server.findRoom( msg.roomId )
-			if( !room )
-			{
-				result = RoomResult.NoSuchRoom;
-			}
-			else
-			{
-				result = room.leave( this );
-				
-				if( result == RoomResult.Success )
-				{
-					let roomIndex = this.rooms.indexOf( room );
-					if( roomIndex != -1 )
-					{
-						this.rooms.splice( roomIndex, 1 );
-					}
-				}
-			}
-		}
-
-		let response: RoomMessage =
-		{
-			type: RoomMessageType.LeaveRoomResponse,
-			result,
-		};
-
-		this.sendMessage( response );
-	}
-
-	@bind 
-	private onMsgCreateRoom( msg: RoomMessage )
-	{
-		const [ result, room ] = this.server.createRoom( this );
-
-		let response: RoomMessage =
-		{
-			type: RoomMessageType.CreateRoomResponse,
-			result,
-			roomId: room?.roomId,
-		};
-
-		this.sendMessage( response );
-	}
-
-	@bind 
-	private onMsgDestroyRoom( msg: RoomMessage )
-	{
-		let result: RoomResult;
-		if( !msg.roomId )
-		{
-			result = RoomResult.InvalidParameters;
-		}
-		else
-		{
-			result = this.server.destroyRoom( this, msg.roomId );
-		}
-
-		let response: RoomMessage =
-		{
-			type: RoomMessageType.DestroyRoomResponse,
-			result,
-			roomId: msg?.roomId,
-		};
-
-		this.sendMessage( response );
 	}
 
 	@bind
@@ -623,7 +571,7 @@ export class RoomServer
 			newRoom.join( conn );
 		}
 	}
-	
+
 	@bind
 	private onHandMatch( result: MatchResult, contexts: any[] )
 	{

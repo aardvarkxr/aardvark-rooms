@@ -111,40 +111,6 @@ class RoomClient
 		} );
 	}
 
-	public async createRoom(): Promise<RoomResult | string>
-	{
-		if( !this.connected )
-			return RoomResult.Disconnected;
-
-
-		let createMsg: RoomMessage =
-		{
-			type: RoomMessageType.CreateRoom,
-		};
-
-		this.sendMessage( createMsg );
-
-		let resp = await this.waitForMessage();
-		return resp?.roomId;
-	}
-
-	public async destroyRoom( roomId: string ): Promise<RoomResult>
-	{
-		if( !this.connected )
-			return RoomResult.Disconnected;
-
-
-		let destroyMsg: RoomMessage =
-		{
-			type: RoomMessageType.DestroyRoom,
-			roomId,
-		}
-		this.sendMessage( destroyMsg );
-
-		let resp = await this.waitForMessage();
-		return resp?.result;
-	}
-
 	public async joinRoom( roomId: string ): Promise<RoomResult>
 	{
 		if( !this.connected )
@@ -182,24 +148,6 @@ class RoomClient
 		return [ resp?.result ?? RoomResult.UnknownFailure, resp.roomId ];
 	}
 
-	public async leaveRoom( roomId: string ): Promise<RoomResult>
-	{
-		if( !this.connected )
-			return RoomResult.Disconnected;
-
-
-		let leaveMsg: RoomMessage =
-		{
-			type: RoomMessageType.LeaveRoom,
-			roomId,
-		};
-
-		this.sendMessage( leaveMsg );
-
-		let resp = await this.waitForMessage();
-		return resp?.result ?? RoomResult.UnknownFailure;
-	}
-
 	public close()
 	{
 		this.ws?.close();
@@ -229,6 +177,7 @@ interface SimpleRoomState
 	connected: boolean;
 	joined: boolean;
 	roomId?: string;
+	roomFromMember?: AvNodeTransform;
 }
 
 class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
@@ -254,6 +203,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 				[ RoomMessageType.RequestMemberInfo ]: this.onRequestMemberInfo,
 				[ RoomMessageType.AddRemoteMember ]: this.onAddRemoteMember,
 				[ RoomMessageType.MemberLeft ]: this.onMemberLeft,
+				[ RoomMessageType.RoomInfo ] : this.onRoomInfo,
 
 			} );
 	}
@@ -266,6 +216,16 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 		}
 	}
 
+	@bind
+	private onRoomInfo( msg: RoomMessage )
+	{
+		this.setState( 
+			{
+				connected: true,
+				roomId: msg.roomId,
+				roomFromMember: msg.roomFromMember,
+			} );
+	}
 
 	@bind
 	private async onConnectionStateChange()
@@ -438,10 +398,7 @@ interface SimpleRoomUIProps
 
 interface SimpleRoomUIState
 {
-	connected: boolean;
-	createdRoom?: string;
 	error?: string;
-	joined: boolean;
 	leftPressed: boolean;
 	rightPressed: boolean;
 
@@ -456,7 +413,6 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 {
 	private m_grabbableRef = React.createRef<AvStandardGrabbable>();
 	private matchRoom = React.createRef<SimpleRoom>();
-	private client: RoomClient;
 
 	constructor( props: any )
 	{
@@ -464,14 +420,9 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 
 		this.state = 
 		{
-			joined: false,
-			connected: false,
-
 			leftPressed: false,
 			rightPressed: false,
 		};
-
-		this.client = new RoomClient( this.props.serverAddress, this.onConnectionStateChange, {} );
 
 		AvGadget.instance().listenForActionState( EAction.Grab, EHand.Left, 
 			() => { 
@@ -489,73 +440,6 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 	}
 
 	@bind
-	private async onConnectionStateChange()
-	{
-		let newlyConnected = !this.state.connected && this.client.connected;
-		this.setState( { connected: this.client.connected, createdRoom: null } );
-		if( newlyConnected )
-		{
-			// try to make our room
-			let res = await this.client.createRoom();
-			if( typeof res == "string" )
-			{
-				this.setState( { createdRoom: res as string } );
-			}
-			else
-			{
-				this.setState( { error: `Failed to create room: ${ RoomResult[ res as number ] }` } );
-			}
-		}
-	}
-
-	@bind
-	private async onJoinRoom()
-	{
-		let res = await this.client.joinRoom( this.state.createdRoom );
-		if( res == RoomResult.Success )
-		{
-			this.setState(
-				{
-					joined: true,
-					error: null,
-				}
-			);
-		}
-		else
-		{
-			this.setState(
-				{
-					error: `Join failed with ${ RoomResult[ res ] }`,
-				}
-			);
-		}
-
-	}
-
-	@bind
-	private async onLeaveRoom()
-	{
-		let res = await this.client.leaveRoom( this.state.createdRoom );
-		if( res == RoomResult.Success )
-		{
-			this.setState(
-				{
-					joined: false,
-					error: null,
-				}
-			);
-		}
-		else
-		{
-			this.setState(
-				{
-					error: `Leave failed with ${ RoomResult[ res ] }`,
-				}
-			);
-		}
-	}
-
-	@bind
 	private async onLeaveMatchRoom()
 	{
 		this.setState(
@@ -568,23 +452,7 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 
 	private renderPanel()
 	{
-		if( !this.state.connected )
-		{
-			return <>
-				<div className="Label">Connecting to server...</div>
-				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-				</>;
-		}
-
-		if( this.state.joined )
-		{
-			return <>
-				<div className="Button" onClick={ this.onLeaveRoom }>Leave Room</div>
-				<div className="Label">Connected to room: { this.state.createdRoom }</div>
-				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-			</>;
-		}
-		else if( this.state.leftPosition && this.state.rightPosition )
+		if( this.state.leftPosition && this.state.rightPosition )
 		{
 			return <>
 				<div className="Button" onClick={ this.onLeaveMatchRoom }>Leave Match Room</div>
@@ -594,16 +462,10 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 			</>;
 		}
-		else if( this.state.createdRoom )
-		{
-			return <>
-				<div className="Button" onClick={ this.onJoinRoom }>Join Room</div>
-				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-			</>;
-		}
 		else
 		{
 			return <>
+				<div className="Label">Click both triggers to join a test room by yourself</div>
 				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 			</>;
 		}
@@ -672,13 +534,6 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 						transmits={ [ { iface: "room-grab@1", processor: this.onRightGrab } ] }/>}
 				</AvOrigin>
 
-				{ this.state.joined && <>
-						<SimpleRoom roomId={ this.state.createdRoom } transform={ {} } 
-							serverAddress={ this.props.serverAddress } key="self"/>
-						<SimpleRoom roomId={ this.state.createdRoom } 
-							transform={ { position: { x: 0, y: 1, z: 0 } } } 
-							serverAddress={ this.props.serverAddress } key="mirror"/>
-					</> }
 				{ this.state.leftPosition && this.state.rightPosition && <>
 						<SimpleRoom ref={ this.matchRoom }
 							leftPosition={ this.state.leftPosition } 

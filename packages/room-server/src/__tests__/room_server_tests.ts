@@ -1,4 +1,4 @@
-import { AvVector } from '@aardvarkxr/aardvark-shared';
+import { AvVector, AvNodeTransform } from '@aardvarkxr/aardvark-shared';
 import { RoomMessage, RoomMessageType, RoomResult } from '@aardvarkxr/room-shared';
 import { RoomServer } from '../room_server';
 import bind from 'bind-decorator';
@@ -13,7 +13,8 @@ class RoomTestClient
 	public ws: WebSocket;
 	public connected = false;
 	public connectResolves: ( ( res: boolean )=>void )[] = [];
-
+	public roomId: string;
+	public roomFromMember: AvNodeTransform;
 	public messages: RoomMessage[] = [];
 	public messageResolve: ( ( msg: RoomMessage )=>void ) | null = null;
 
@@ -30,7 +31,19 @@ class RoomTestClient
 	public onMessage( event: WebSocket.MessageEvent )
 	{
 		let msg = JSON.parse( event.data as string ) as RoomMessage;
-		if( this.messageResolve )
+
+		if( msg.type == RoomMessageType.UpdateRoomInfo )
+		{
+			this.roomId = msg.roomId;
+			this.roomFromMember = msg.roomFromMember;
+
+			for( let resolve of this.connectResolves )
+			{
+				resolve( true );
+			}
+			this.connectResolves = [];
+		}
+		else if( this.messageResolve )
 		{
 			let res = this.messageResolve;
 			this.messageResolve = null;
@@ -46,12 +59,6 @@ class RoomTestClient
 	private onConnect( )
 	{
 		this.connected = true;
-
-		for( let resolve of this.connectResolves )
-		{
-			resolve( true );
-		}
-		this.connectResolves = [];
 	}
 
 	@bind
@@ -117,39 +124,6 @@ class RoomTestClient
 		} );
 	}
 
-	public async createRoom()
-	{
-		await this.waitForConnect();
-
-		let createMsg: RoomMessage =
-		{
-			type: RoomMessageType.CreateRoom,
-		};
-
-		this.sendMessage( createMsg );
-
-		let resp = await this.waitForMessage();
-		expect( resp?.type ).toBe( RoomMessageType.CreateRoomResponse );
-		return resp?.roomId;
-	}
-
-	public async destroyRoom( roomId: string )
-	{
-		await this.waitForConnect();
-
-		let destroyMsg: RoomMessage =
-		{
-			type: RoomMessageType.DestroyRoom,
-			roomId,
-		}
-		this.sendMessage( destroyMsg );
-
-		let resp = await this.waitForMessage();
-		expect( resp?.type ).toBe( RoomMessageType.DestroyRoomResponse );
-
-		return resp?.result;
-	}
-
 	public async joinRoom( roomId: string )
 	{
 		await this.waitForConnect();
@@ -181,22 +155,6 @@ class RoomTestClient
 
 		let resp = await this.waitForMessage();
 		return [ resp?.result ?? RoomResult.UnknownFailure, resp.roomId ];
-	}
-
-	public async leaveRoom( roomId: string )
-	{
-		await this.waitForConnect();
-
-		let leaveMsg: RoomMessage =
-		{
-			type: RoomMessageType.LeaveRoom,
-			roomId,
-		};
-
-		this.sendMessage( leaveMsg );
-
-		let resp = await this.waitForMessage();
-		return resp?.result ?? RoomResult.UnknownFailure;
 	}
 
 	public close()
@@ -250,30 +208,8 @@ describe( "RoomServer ", () =>
 		let resp = await client.waitForMessage();
 		expect( resp?.type ).toBe( RoomMessageType.JoinRoomResponse );
 		expect( resp?.result ).toBe( RoomResult.NoSuchRoom );
-		
-		client.close();
-		done();
-	} );
 
-
-	it( "create room", async ( done ) =>
-	{
-		let client = new RoomTestClient( server );
-		await client.waitForConnect();
-
-		let createMsg: RoomMessage =
-		{
-			type: RoomMessageType.CreateRoom,
-		};
-
-		client.sendMessage( createMsg );
-
-		let resp = await client.waitForMessage();
-		expect( resp?.type ).toBe( RoomMessageType.CreateRoomResponse );
-		expect( resp?.result ).toBe( RoomResult.Success );
-		expect( typeof resp?.roomId ).toBe( "string" );
-
-		expect( resp?.roomId ).not.toBe( "" );
+		expect( client.roomId ).not.toBe( "fred" );
 		
 		client.close();
 		done();
@@ -282,33 +218,35 @@ describe( "RoomServer ", () =>
 
 	it( "join room", async ( done ) =>
 	{
-		let client = new RoomTestClient( server );
-		let roomId = await client.createRoom();
+		let client1 = new RoomTestClient( server );
+		let client2 = new RoomTestClient( server );
+		expect( await client1.waitForConnect() ).toBe( true );
+		expect( await client2.waitForConnect() ).toBe( true );
 
 		let joinMsg: RoomMessage =
 		{
 			type: RoomMessageType.JoinRoom,
-			roomId,
+			roomId: client2.roomId,
 		};
 
-		client.sendMessage( joinMsg );
+		client1.sendMessage( joinMsg );
 
-		let resp = await client.waitForMessage();
+		let resp = await client1.waitForMessage();
 		expect( resp?.type ).toBe( RoomMessageType.JoinRoomResponse );
 		expect( resp?.result ).toBe( RoomResult.Success );
 
-		client.close();
+		client1.close();
+		client2.close();
 		done();
 	} );
 
 	it( "join twice", async ( done ) =>
 	{
 		let client = new RoomTestClient( server );
-		let roomId = await client.createRoom() as string;
+		await client.waitForConnect();
 
-		expect( typeof roomId ).toBe( "string" );
-		expect( await client.joinRoom( roomId ) ).toBe( RoomResult.Success );
-		expect( await client.joinRoom( roomId ) ).toBe( RoomResult.AlreadyInThisRoom );
+		expect( typeof client.roomId ).toBe( "string" );
+		expect( await client.joinRoom( client.roomId ) ).toBe( RoomResult.AlreadyInThisRoom );
 
 		client.close();
 		done();
@@ -317,11 +255,11 @@ describe( "RoomServer ", () =>
 	it( "two members", async ( done ) =>
 	{
 		let client1 = new RoomTestClient( server );
-		let roomId = await client1.createRoom() as string;
+		await client1.waitForConnect();
+		let roomId = client1.roomId;
 		let client2 = new RoomTestClient( server );
 		await client2.waitForConnect();
 
-		expect( await client1.joinRoom( roomId ) ).toBe( RoomResult.Success );
 		expect( await client2.joinRoom( roomId ) ).toBe( RoomResult.Success );
 
 		let infoRequestMessage = await client1.waitForMessage();
@@ -394,164 +332,13 @@ describe( "RoomServer ", () =>
 		expect( ( s2pBounce?.message as any)?.my ).toBe( "pressshhhhuuusss" );
 
 		// leaving the room should cause the other end to lose us as a member
-		expect( await client1.leaveRoom( roomId ) ).toBe( RoomResult.Success );
+		client1.close();
 
 		let memberLeft = await client2.waitForMessage();
 		expect( memberLeft?.type ).toBe( RoomMessageType.MemberLeft );
 		expect( memberLeft?.memberId ).toBe( client1MemberId );
 		expect( memberLeft?.roomId ).toBe( roomId );
 
-		client1.close();
-		client2.close();
-		done();
-	} );
-
-	it( "leave room", async ( done ) =>
-	{
-		let client = new RoomTestClient( server );
-		let roomId = await client.createRoom() as string;
-
-		expect( await client.joinRoom( roomId ) ).toBe( RoomResult.Success );
-
-		let leaveMsg: RoomMessage =
-		{
-			type: RoomMessageType.LeaveRoom,
-			roomId,
-		};
-
-		client.sendMessage( leaveMsg );
-
-		let resp = await client.waitForMessage();
-		expect( resp?.type ).toBe( RoomMessageType.LeaveRoomResponse );
-		expect( resp?.result ).toBe( RoomResult.Success );
-
-		client.close();
-		done();
-	} );
-
-	it( "leave by disconnecting", async ( done ) =>
-	{
-		let client1 = new RoomTestClient( server );
-		let roomId = await client1.createRoom() as string;
-		let client2 = new RoomTestClient( server );
-		await client2.waitForConnect();
-
-		expect( await client1.joinRoom( roomId ) ).toBe( RoomResult.Success );
-		expect( await client2.joinRoom( roomId ) ).toBe( RoomResult.Success );
-
-		expect( ( await client1.waitForMessage() )?.type ).toBe( RoomMessageType.RequestMemberInfo );
-		expect( ( await client2.waitForMessage() )?.type ).toBe( RoomMessageType.RequestMemberInfo );
-		
-		let initInfoMsg1: RoomMessage =
-		{
-			type: RoomMessageType.RequestMemberResponse,
-			roomId,
-			initInfo: {},
-		}
-		client1.sendMessage( initInfoMsg1 );
-		client2.sendMessage( initInfoMsg1 );
-
-		expect( ( await client2.waitForMessage() )?.type ).toBe( RoomMessageType.AddRemoteMember );
-		expect( ( await client1.waitForMessage() )?.type ).toBe( RoomMessageType.AddRemoteMember );
-
-		// The client hanging up should cause the other end to lose us as a member
-		client1.close();
-
-		let memberLeft = await client2.waitForMessage();
-		expect( memberLeft?.type ).toBe( RoomMessageType.MemberLeft );
-		expect( memberLeft?.memberId ).toBe( 1 );
-		expect( memberLeft?.roomId ).toBe( roomId );
-		
-		client1.close();
-		client2.close();
-		done();
-	} );
-
-	it( "leave when not joined", async ( done ) =>
-	{
-		let client = new RoomTestClient( server );
-		let roomId = await client.createRoom() as string;
-
-		expect( await client.leaveRoom( roomId ) ).toBe( RoomResult.UnknownMember );
-		expect( await client.joinRoom( roomId ) ).toBe( RoomResult.Success );
-		expect( await client.leaveRoom( roomId ) ).toBe( RoomResult.Success );
-		expect( await client.leaveRoom( roomId ) ).toBe( RoomResult.UnknownMember );
-
-		client.close();
-		done();
-	} );
-
-	it( "destroy room", async ( done ) =>
-	{
-		let client = new RoomTestClient( server );
-		let roomId = await client.createRoom() as string;
-
-		let destroyMsg: RoomMessage =
-		{
-			type: RoomMessageType.DestroyRoom,
-			roomId,
-		}
-		client.sendMessage( destroyMsg );
-
-		let resp = await client.waitForMessage();
-		expect( resp?.type ).toBe( RoomMessageType.DestroyRoomResponse );
-		expect( resp?.result ).toBe( RoomResult.Success );
-
-		client.close();
-		done();
-	} );
-
-	it( "destroy room inappropriately", async ( done ) =>
-	{
-		let client1 = new RoomTestClient( server );
-		let roomId = await client1.createRoom() as string;
-
-		let client2 = new RoomTestClient( server );
-		await client2.waitForConnect();
-
-		expect( await client2.destroyRoom( roomId ) ).toBe( RoomResult.PermissionDenied );
-		expect( await client1.destroyRoom( roomId ) ).toBe( RoomResult.Success );
-		expect( await client1.destroyRoom( "arglebargle" ) ).toBe( RoomResult.NoSuchRoom );
-		expect( await client1.destroyRoom( roomId ) ).toBe( RoomResult.NoSuchRoom );
-
-		client1.close();
-		client2.close();
-		done();
-	} );
-
-	it( "destroy room from inside", async ( done ) =>
-	{
-		let client1 = new RoomTestClient( server );
-		let roomId = await client1.createRoom() as string;
-		let client2 = new RoomTestClient( server );
-		await client2.waitForConnect();
-
-		expect( await client1.joinRoom( roomId ) ).toBe( RoomResult.Success );
-		expect( await client2.joinRoom( roomId ) ).toBe( RoomResult.Success );
-
-		expect( ( await client1.waitForMessage() )?.type ).toBe( RoomMessageType.RequestMemberInfo );
-		expect( ( await client2.waitForMessage() )?.type ).toBe( RoomMessageType.RequestMemberInfo );
-
-		let destroyMsg: RoomMessage =
-		{
-			type: RoomMessageType.DestroyRoom,
-			roomId,
-		}
-		client1.sendMessage( destroyMsg );
-
-		let ejectMsg = await client1.waitForMessage();
-		expect( ejectMsg?.type ).toBe( RoomMessageType.EjectedFromRoom );
-		expect( ejectMsg?.roomId ).toBe( roomId );
-
-		ejectMsg = await client2.waitForMessage();
-		expect( ejectMsg?.type ).toBe( RoomMessageType.EjectedFromRoom );
-		expect( ejectMsg?.roomId ).toBe( roomId );
-
-		let resp = await client1.waitForMessage();
-		expect( resp?.type ).toBe( RoomMessageType.DestroyRoomResponse );
-		expect( resp?.result ).toBe( RoomResult.Success );
-
-		client1.close();
 		client2.close();
 		done();
 	} );
