@@ -1,7 +1,7 @@
-import { ActiveInterface, AvComposedEntity, AvGadget, AvInterfaceEntity, AvOrigin, AvPanel, AvStandardGrabbable, AvTransform, DefaultLanding, GrabbableStyle, NetworkUniverseComponent, RemoteUniverseComponent } from '@aardvarkxr/aardvark-react';
-import { Av, AvNodeTransform, AvVector, EAction, EHand, emptyVolume, g_builtinModelBox, infiniteVolume, nodeTransformFromMat4, nodeTransformToMat4 } from '@aardvarkxr/aardvark-shared';
+import { ActiveInterface, AvComposedEntity, AvGadget, AvInterfaceEntity, AvOrigin, AvPanel, AvPrimitive, AvStandardGrabbable, AvTransform, DefaultLanding, GrabbableStyle, NetworkUniverseComponent, RemoteUniverseComponent, PrimitiveType } from '@aardvarkxr/aardvark-react';
+import { Av, AvNodeTransform, AvVector, EAction, EHand, emptyVolume, EVolumeType, g_builtinModelBox, infiniteVolume, nodeTransformFromMat4, nodeTransformToMat4 } from '@aardvarkxr/aardvark-shared';
 import { RoomResult, RoomMessage, RoomMessageType } from '@aardvarkxr/room-shared';
-import { mat4 } from '@tlaukkan/tsm';
+import { mat4, vec4 } from '@tlaukkan/tsm';
 import bind from 'bind-decorator';
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
@@ -155,6 +155,13 @@ class RoomClient
 	}
 }
 
+enum SimpleRoomRole
+{
+	Both,
+	Network,
+	Remote,
+}
+
 interface SimpleRoomProps
 {
 	/** If roomId is specified the simple room will try to join
@@ -168,6 +175,7 @@ interface SimpleRoomProps
 	leftPosition?: AvVector;
 	rightPosition?: AvVector;
 
+	role: SimpleRoomRole;
 	serverAddress: string;
 	transform: AvNodeTransform;
 	onUpdate?: ()=>void;
@@ -382,25 +390,33 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 			return null;
 
 		let remotes: JSX.Element[] = [];
-		for( let memberId in this.remoteMembers )
+		if( this.props.role == SimpleRoomRole.Both || this.props.role == SimpleRoomRole.Remote )
 		{
-			let remoteMember = this.remoteMembers[ memberId ];
-			remotes.push( 
-				<AvTransform key={ memberId } transform={ remoteMember.roomFromMember }>
-					<AvComposedEntity volume={ emptyVolume() } 
-						debugName={ `Remote member ${ memberId }`} 
-						key={ memberId }
-						components={ [ remoteMember.universe ] }
-						/> 
-				</AvTransform>)
+			for( let memberId in this.remoteMembers )
+			{
+				let remoteMember = this.remoteMembers[ memberId ];
+				remotes.push( 
+					<AvTransform key={ memberId } transform={ remoteMember.roomFromMember }>
+						<AvComposedEntity volume={ emptyVolume() } 
+							debugName={ `Remote member ${ memberId }`} 
+							key={ memberId }
+							components={ [ remoteMember.universe ] }
+							/> 
+					</AvTransform>)
+			}
 		}
 
-		let localMemberFromRoom = nodeTransformToMat4( this.state.roomFromMember ).inverse();
+		let renderNetwork = this.props.role == SimpleRoomRole.Both 
+			|| this.props.role == SimpleRoomRole.Network;
+		let roomFromLocalMember = nodeTransformToMat4( this.state.roomFromMember );
+		let localMemberFromRoom = roomFromLocalMember.copy( new mat4() ).inverse();
 
 		return (
 			<AvOrigin path="/space/stage">
-				<AvComposedEntity components={ [ this.networkUniverse ] }
-					volume={ infiniteVolume() } debugName="simple room network universe"/> 
+				{ 
+					renderNetwork && <AvComposedEntity components={ [ this.networkUniverse ] }
+						volume={ infiniteVolume() } debugName="simple room network universe"/> 
+				}
 				<AvTransform transform={ nodeTransformFromMat4( localMemberFromRoom ) }>
 					{ remotes }
 				</AvTransform>
@@ -425,6 +441,9 @@ interface SimpleRoomUIState
 
 	leftPosition?: AvVector;
 	rightPosition?: AvVector;
+
+	// leftTmpPosition?: AvVector;
+	// rightTmpPosition?: AvVector;
 }
 
 class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState >
@@ -468,6 +487,14 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 		);
 	}
 
+	private renderVector( label: string, pos: AvVector )
+	{
+		return <div className="Label">
+			{ label }: ( { ( pos?.x ?? 0 ).toFixed( 3 ) }, 
+			{ ( pos?.y ?? 0 ).toFixed( 3 ) }, { ( pos?.z ?? 0 ).toFixed( 3 ) }, )
+		</div>;
+	}
+
 	private renderPanel()
 	{
 		if( this.state.leftPosition && this.state.rightPosition )
@@ -477,6 +504,10 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 				<div className="Label">
 					Connected to room from match: { this.matchRoom.current?.roomId }
 				</div>
+				{ this.renderVector( "Left", this.state.leftPosition ) }
+				{ this.renderVector( "Right", this.state.rightPosition ) }
+				{/* { this.renderVector( "Tmp Left", this.state.leftTmpPosition ) }
+				{ this.renderVector( "Tmp Right", this.state.rightTmpPosition ) } */}
 				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 			</>;
 		}
@@ -484,6 +515,8 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 		{
 			return <>
 				<div className="Label">Click both triggers to join a test room by yourself</div>
+				{/* { this.renderVector( "Tmp Left", this.state.leftTmpPosition ) }
+				{ this.renderVector( "Tmp Right", this.state.rightTmpPosition ) } */}
 				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 			</>;
 		}
@@ -512,17 +545,24 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 		activeGrab.onEnded( () =>
 		{
 			this.setState( { rightGrab: null } );
-		})
+		});
 	}
 
 	private checkForClickStart()
 	{
+		function convertPos( entityFromPeer: AvNodeTransform ): AvVector
+		{
+			let stageFromHand = nodeTransformToMat4( entityFromPeer ).inverse();
+			let handPos = stageFromHand.multiplyVec4( new vec4( [ 0, 0, 0, 1 ] ) );
+			return { x: handPos.x, y: handPos.y, z: handPos.z };
+		}
+
 		if( this.state.leftGrab && this.state.rightGrab )
 		{
 			this.setState( 
 				{ 
-					leftPosition: this.state.leftGrab.selfFromPeer.position,
-					rightPosition: this.state.rightGrab.selfFromPeer.position,
+					leftPosition: convertPos( this.state.leftGrab.selfFromPeer ),
+					rightPosition: convertPos( this.state.rightGrab.selfFromPeer ),
 				} );
 		}
 	}
@@ -539,16 +579,18 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 				</AvTransform>
 
 				<AvOrigin path="/space/stage">
-					<AvInterfaceEntity volume={ [ infiniteVolume() ] } 
+					<AvInterfaceEntity volume={ [ { type: EVolumeType.Sphere, radius: 0.001} ] } 
 						receives={ [{iface: "room-grab@1" }]} />
 				</AvOrigin>
 
 				<AvOrigin path="/user/hand/left">
 					{ this.state.leftPressed && <AvInterfaceEntity volume={ [ infiniteVolume() ] } 
+						wantsTransforms={ true }
 						transmits={ [ { iface: "room-grab@1", processor: this.onLeftGrab } ] }/>}
 				</AvOrigin>
 				<AvOrigin path="/user/hand/right">
 					{ this.state.rightPressed && <AvInterfaceEntity volume={ [ infiniteVolume() ] } 
+						wantsTransforms={ true }
 						transmits={ [ { iface: "room-grab@1", processor: this.onRightGrab } ] }/>}
 				</AvOrigin>
 
@@ -559,11 +601,13 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 							transform={ {} } 
 							serverAddress={ this.props.serverAddress } 
 							key="self_match"
+							role={ SimpleRoomRole.Network }
 							onUpdate={ () => this.forceUpdate() }/>
 						<SimpleRoom 
 							leftPosition={ this.state.rightPosition } 
 							rightPosition={ this.state.leftPosition }
 							transform={ { position: { x: 0, y: 1, z: 0 } } } 
+							role={ SimpleRoomRole.Remote }
 							serverAddress={ this.props.serverAddress } key="mirror_match"/>
 					</> }
 			</AvStandardGrabbable> );
