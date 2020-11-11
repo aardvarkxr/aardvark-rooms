@@ -7,7 +7,7 @@ import { v4 as uuid } from 'uuid';
 import { AddressInfo } from 'net';
 import { HandSample, HandMatcher, MatchResult } from './hand_matcher';
 import { AvVector, vecFromAvVector, AvNodeTransform, minimalToMat4Transform, nodeTransformToMat4, nodeTransformFromMat4, rotationMatFromEulerDegrees, translateMat } from '@aardvarkxr/aardvark-shared';
-import { mat4, vec3 } from '@tlaukkan/tsm';
+import { mat4, vec3, vec4 } from '@tlaukkan/tsm';
 
 interface MemberInfo
 {
@@ -66,6 +66,10 @@ class Room
 
 		let roomFromHost = nodeTransformToMat4( hostInfo.roomFromMember );
 		let roomFromMember = mat4.product( roomFromHost, hostFromMember, new mat4() );
+
+		// this.server.log( `roomFromHost = ${  roomFromHost.all() }` );
+		// this.server.log( `roomFromMember = ${  roomFromMember.all() }` );
+
 		return this.join( newMember, nodeTransformFromMat4( roomFromMember ) );
 	}
 
@@ -595,30 +599,45 @@ export class RoomServer
 		let hostLeft = vecFromAvVector( host.leftHandPosition );
 		let hostRight = vecFromAvVector( host.rightHandPosition );
 
-		let hostFromJoinerTranslation = vec3.difference( hostRight, joinerLeft, new vec3() );
-
 		function yawFromTwoPoints( start: vec3, end: vec3 ): number
 		{
 			let diff = vec3.difference( end, start, new vec3() );
 			diff.y = 0;
 
+			//console.log( `diff=${ diff.xyz }` );
 			// the diff can't be vertical and have this really work
 			if( diff.length() < 0.001 )
 			{
+				//console.log( `len=${ diff.length() }` );
 				return 0;
 			}
 
-			let normalizedDiff = diff.normalize( new vec3() );
-			return Math.atan2( normalizedDiff.y, normalizedDiff.x );
+			diff.normalize();
+			//console.log( `normalizedDiff=${ diff.xyz }` );
+			return Math.atan2( diff.y, diff.x );
 		}
 
 		let hostYaw = yawFromTwoPoints( hostRight, hostLeft );
 		let joinerYaw = yawFromTwoPoints( joinerRight, joinerLeft );
-		let hostFromJoinerYaw = joinerYaw - hostYaw + Math.PI; 
+		let hostFromJoinerYaw = joinerYaw - hostYaw; 
 
 		let hostFromJoinerRotation = rotationMatFromEulerDegrees( 
 			new vec3( [ 0, hostFromJoinerYaw * 180 / Math.PI, 0 ] ) );
-		let hostFromJoinerTranslationMat = translateMat( hostFromJoinerTranslation );
+
+		let joinerLeftInHost = hostFromJoinerRotation.multiplyVec3( joinerLeft );
+		let hostFromJoinerTranslation = vec3.difference( hostRight, joinerLeftInHost, new vec3() );
+
+		let hostFromJoiner = translateMat( hostFromJoinerTranslation ).multiply( hostFromJoinerRotation );
+
+		// this.log( "----" );
+		// this.log( `hostYaw = ${ hostYaw }` );
+		// this.log( `joinerYaw = ${ joinerYaw }` );
+		// this.log( `hostFromJoinerTranslation = ${ hostFromJoinerTranslation.xyz }` );
+		// this.log( `hostLeft = ${ hostLeft.xyz }` );
+		// this.log( `hostRight = ${ hostRight.xyz }` );
+		// this.log( `joinerLeft = ${  joinerLeft.xyz }` );
+		// this.log( `joinerRight = ${ joinerRight.xyz }` );
+		// this.log( `hostFromJoiner = ${  hostFromJoiner.all() }` );
 
 		let resp: RoomMessage =
 		{
@@ -631,8 +650,7 @@ export class RoomServer
 		joiner.sendMessage( resp );
 
 		joiner.room.leave( joiner );
-		host.room.joinViaHost( joiner, host, mat4.product( hostFromJoinerTranslationMat, hostFromJoinerRotation,
-			new mat4() ) );
+		host.room.joinViaHost( joiner, host, hostFromJoiner );
 	}
 
 	@bind
