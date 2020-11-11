@@ -9,7 +9,7 @@
 			"port": 8042,
 			"sourceMaps": true,
 			"request": "attach",
-			"type": "chrome",
+			"type": "pwa-chrome",
 			"targetSelection": "pick",
 			//"trace":"verbose",
 			"webRoot": "${workspaceFolder}"
@@ -28,6 +28,19 @@
 			"internalConsoleOptions": "neverOpen",
 			"cwd": "${workspaceRoot}/packages/room-server",
 			"port": 9229
+		},
+		{
+			"type": "node",
+			"request": "attach",
+			"name": "Attach to server",
+			"sourceMaps": true,
+			"port": 9229,
+			"protocol": "auto",
+			"outFiles": [  
+				"${workspaceRoot}/node_modules/**/*.js",
+				"${worskpaceRoot}/packages/**/*.js",
+				"${worskpaceRoot}/packages/**/*.js.map",
+			 ]
 		}
 	]
 }
