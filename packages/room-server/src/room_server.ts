@@ -8,6 +8,7 @@ import { AddressInfo } from 'net';
 import { HandSample, HandMatcher, MatchResult } from './hand_matcher';
 import { AvVector, vecFromAvVector, AvNodeTransform, minimalToMat4Transform, nodeTransformToMat4, nodeTransformFromMat4, rotationMatFromEulerDegrees, translateMat } from '@aardvarkxr/aardvark-shared';
 import { mat4, vec3, vec4 } from '@tlaukkan/tsm';
+import { Z_ASCII } from 'zlib';
 
 interface MemberInfo
 {
@@ -598,11 +599,19 @@ export class RoomServer
 			return;
 		}
 
+		function lerp( a: vec3, b: vec3, t: number ): vec3
+		{
+			let d = new vec3( [ b.x - a.x, b.y - a.y, b.z - a.z ] );
+			return new vec3( [ a.x + d.x * t, a.y + d.y * t, a.z + d.z * t ] );
+		}
+
 		// figure out the transform from joiner to host
 		let joinerLeft = vecFromAvVector( joiner.leftHandPosition );
 		let joinerRight = vecFromAvVector( joiner.rightHandPosition );
+		let joinerCenter = lerp( joinerLeft, joinerRight, 0.5 );
 		let hostLeft = vecFromAvVector( host.leftHandPosition );
 		let hostRight = vecFromAvVector( host.rightHandPosition );
+		let hostCenter = lerp( hostLeft, hostLeft, 0.5 );
 		
 		function yawFromTwoPoints( start: vec3, end: vec3 ): number
 		{
@@ -628,6 +637,7 @@ export class RoomServer
 
 		let leftInRoom = new vec3( roomFromHostMat.multiplyVec4( new vec4( [ ...hostLeft.xyz, 1 ] ) ).xyz );
 		let rightInRoom = new vec3( roomFromHostMat.multiplyVec4( new vec4( [ ...hostRight.xyz, 1 ] ) ).xyz );
+		let centerInRoom = lerp( leftInRoom, rightInRoom, 0.5 );
 
 		let hostYaw = yawFromTwoPoints( rightInRoom, leftInRoom );
 		let joinerYaw = yawFromTwoPoints( joinerRight, joinerLeft );
@@ -636,8 +646,8 @@ export class RoomServer
 		let hostFromJoinerRotation = rotationMatFromEulerDegrees( 
 			new vec3( [ 0, hostFromJoinerYaw * 180 / Math.PI, 0 ] ) );
 
-		let joinerLeftInHost = hostFromJoinerRotation.multiplyVec3( joinerLeft );
-		let hostFromJoinerTranslation = vec3.difference( hostRight, joinerLeftInHost, new vec3() );
+		let joinerCenterInHost = hostFromJoinerRotation.multiplyVec3( joinerCenter );
+		let hostFromJoinerTranslation = vec3.difference( centerInRoom, joinerCenterInHost, new vec3() );
 
 		let hostFromJoiner = translateMat( hostFromJoinerTranslation ).multiply( hostFromJoinerRotation );
 
