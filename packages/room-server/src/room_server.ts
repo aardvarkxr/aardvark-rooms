@@ -55,6 +55,11 @@ class Room
 		return this.members.find( ( value: MemberInfo ) => value.memberId == memberId );
 	}
 
+	public getRoomFromMember( memberConnection: Connection )
+	{
+		return this.findMember( memberConnection )?.roomFromMember;
+	}
+
 	public joinViaHost( newMember: Connection, host: Connection, hostFromMember: mat4 )
 	{
 		let hostInfo = this.findMember( host );
@@ -598,12 +603,12 @@ export class RoomServer
 		let joinerRight = vecFromAvVector( joiner.rightHandPosition );
 		let hostLeft = vecFromAvVector( host.leftHandPosition );
 		let hostRight = vecFromAvVector( host.rightHandPosition );
-
+		
 		function yawFromTwoPoints( start: vec3, end: vec3 ): number
 		{
 			let diff = vec3.difference( end, start, new vec3() );
 			diff.y = 0;
-
+			
 			//console.log( `diff=${ diff.xyz }` );
 			// the diff can't be vertical and have this really work
 			if( diff.length() < 0.001 )
@@ -611,15 +616,22 @@ export class RoomServer
 				//console.log( `len=${ diff.length() }` );
 				return 0;
 			}
-
+			
 			diff.normalize();
 			//console.log( `normalizedDiff=${ diff.xyz }` );
-			return Math.atan2( diff.y, diff.x );
+			return Math.atan2( diff.z, diff.x );
 		}
+		
+		// figure out the host's transform relative to the room
+		let roomFromHost = host.room.getRoomFromMember( host );
+		let roomFromHostMat = nodeTransformToMat4( roomFromHost );
 
-		let hostYaw = yawFromTwoPoints( hostRight, hostLeft );
+		let leftInRoom = new vec3( roomFromHostMat.multiplyVec4( new vec4( [ ...hostLeft.xyz, 1 ] ) ).xyz );
+		let rightInRoom = new vec3( roomFromHostMat.multiplyVec4( new vec4( [ ...hostRight.xyz, 1 ] ) ).xyz );
+
+		let hostYaw = yawFromTwoPoints( rightInRoom, leftInRoom );
 		let joinerYaw = yawFromTwoPoints( joinerRight, joinerLeft );
-		let hostFromJoinerYaw = joinerYaw - hostYaw; 
+		let hostFromJoinerYaw = joinerYaw + hostYaw; 
 
 		let hostFromJoinerRotation = rotationMatFromEulerDegrees( 
 			new vec3( [ 0, hostFromJoinerYaw * 180 / Math.PI, 0 ] ) );
@@ -629,9 +641,15 @@ export class RoomServer
 
 		let hostFromJoiner = translateMat( hostFromJoinerTranslation ).multiply( hostFromJoinerRotation );
 
+		// function displayRadians( r: number )
+		// {
+		// 	return ( r * 180 / Math.PI ).toFixed( 0 );
+		// }
+
 		// this.log( "----" );
-		// this.log( `hostYaw = ${ hostYaw }` );
-		// this.log( `joinerYaw = ${ joinerYaw }` );
+		// this.log( `hostYaw = ${  displayRadians( hostYaw ) }` );
+		// this.log( `joinerYaw = ${  displayRadians( joinerYaw ) }` );
+		// this.log( `hostFromJoinerYaw = ${  displayRadians( hostFromJoinerYaw ) }` );
 		// this.log( `hostFromJoinerTranslation = ${ hostFromJoinerTranslation.xyz }` );
 		// this.log( `hostLeft = ${ hostLeft.xyz }` );
 		// this.log( `hostRight = ${ hostRight.xyz }` );
