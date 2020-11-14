@@ -179,6 +179,9 @@ interface SimpleRoomProps
 	serverAddress: string;
 	transform: AvNodeTransform;
 	onUpdate?: ()=>void;
+
+	onRoomJoined?: () => void;
+	onRoomMatchFailed?: () => void;
 }
 
 interface SimpleRoomState
@@ -219,6 +222,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 				[ RoomMessageType.AddRemoteMember ]: this.onAddRemoteMember,
 				[ RoomMessageType.MemberLeft ]: this.onMemberLeft,
 				[ RoomMessageType.RoomInfo ] : this.onRoomInfo,
+				[ RoomMessageType.JoinRoomWithMatchResponse ]: this.onJoinRoomWithMatchResponse,
 
 			} );
 	}
@@ -286,6 +290,15 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 	public get roomId(): string
 	{
 		return this.props.roomId ?? this.state.roomId;
+	}
+
+	@bind 
+	private onJoinRoomWithMatchResponse( msg: RoomMessage )
+	{
+		if( msg.result == RoomResult.MatchTimedOut )
+		{
+			this.props.onRoomMatchFailed?.();
+		}
 	}
 
 	@bind
@@ -360,6 +373,8 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 		}
 		
 		this.remoteMembers[ msg.memberId ] = remoteMember;
+
+		this.props?.onRoomJoined();
 		this.forceUpdate();
 	}
 	
@@ -432,7 +447,8 @@ interface SimpleRoomUIProps
 
 interface SimpleRoomUIState
 {
-	error?: string;
+	hintText?: string;
+
 	leftPressed: boolean;
 	rightPressed: boolean;
 
@@ -449,6 +465,7 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 {
 	private m_grabbableRef = React.createRef<AvStandardGrabbable>();
 	private matchRoom = React.createRef<SimpleRoom>();
+	private hintTextTimer: number = null;
 
 	constructor( props: any )
 	{
@@ -459,6 +476,9 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 			leftPressed: false,
 			rightPressed: false,
 		};
+
+		this.showHintText( "Click both triggers in the same place as another player to join an Aardvark"
+			+ " room with that player. Click them close to each other to join a mirror room by yourself." );
 
 		AvGadget.instance().listenForActionState( EAction.Grab, EHand.Left, 
 			() => { 
@@ -475,63 +495,35 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 			() => { this.setState( { rightPressed: false, rightGrab: null } ) } );
 	}
 
-	@bind
-	private async onLeaveMatchRoom()
+	private showHintText( hintText: string )
 	{
-		this.setState(
-			{
-				leftPosition: null,
-				rightPosition: null,
-			}
-		);
-	}
+		if( this.hintTextTimer )
+		{
+			clearTimeout( this.hintTextTimer );
+			this.hintTextTimer = null;
+		}
 
-	private renderVector( label: string, pos: AvVector )
-	{
-		return <div className="Label">
-			{ label }: ( { ( pos?.x ?? 0 ).toFixed( 3 ) }, 
-			{ ( pos?.y ?? 0 ).toFixed( 3 ) }, { ( pos?.z ?? 0 ).toFixed( 3 ) }, )
-		</div>;
+		this.setState( { hintText } );
+		
+		this.hintTextTimer = window.setTimeout( () =>
+		{
+			this.hintTextTimer = null;
+			this.setState( { hintText: null } );
+		}, 3000 );
 	}
 
 	private renderPanel()
 	{
-		if( this.state.leftPosition && this.state.rightPosition )
-		{
-			if( this.state.mirror )
-			{
-				return <>
-					<div className="Button" onClick={ this.onLeaveMatchRoom }>Leave Match Room</div>
-					<div className="Label">
-						Connected to mirror: { this.matchRoom.current?.roomId }
-					</div>
-					{ this.renderVector( "Left", this.state.leftPosition ) }
-					{ this.renderVector( "Right", this.state.rightPosition ) }
-					{/* { this.renderVector( "Tmp Left", this.state.leftTmpPosition ) }
-					{ this.renderVector( "Tmp Right", this.state.rightTmpPosition ) } */}
-					{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-				</>;
-			}
-			else
-			{
-				return <>
-					<div className="Button" onClick={ this.onLeaveMatchRoom }>Leave Match Room</div>
-					<div className="Label">
-						Connected to match: { this.matchRoom.current?.roomId }
-					</div>
-					{ this.renderVector( "Left", this.state.leftPosition ) }
-					{ this.renderVector( "Right", this.state.rightPosition ) }
-					{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-				</>;
-			}
-		}
-		else
-		{
-			return <>
-				<div className="Label">Click both triggers to join a test room by yourself</div>
-				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-			</>;
-		}
+		if( !this.state.hintText )
+			return null;
+
+		return <AvOrigin path="/user/head">
+			<AvTransform translateZ={ -0.3 } translateY={-0.08}>
+				<AvPanel interactive={false} widthInMeters={ 0.15 }>
+					<div className="Label">{ this.state.hintText }</div>
+				</AvPanel>
+			</AvTransform>
+		</AvOrigin>;
 	}
 
 	@bind
@@ -560,6 +552,25 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 		});
 	}
 
+	@bind
+	private onRoomJoined()
+	{
+		this.showHintText( "Joined the room!" );
+	}
+
+	@bind
+	private onRoomMatchFailed()
+	{
+		this.showHintText( "Did not match with another user. Try again by clicking on both triggers while "
+			+ "holding your hands in the same location as the other user." );
+		this.setState( 
+		{
+			leftPosition: null,
+			rightPosition: null,
+			mirror: null,
+		} );
+	}
+
 	private checkForClickStart()
 	{
 		function convertPos( entityFromPeer: AvNodeTransform ): AvVector
@@ -580,6 +591,7 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 			if( dist > k_distanceForCloseGesture )
 			{
 				console.log( "entering match mode")
+				this.showHintText( "Searching for another player..." );
 				this.setState( 
 					{ 
 						leftPosition,
@@ -590,6 +602,8 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 			else if( this.state.leftPosition && this.state.rightPosition )
 			{
 				console.log( "exiting room")
+				this.showHintText( "Exiting room. Click both triggers while holding your hands in the same"
+					+ " place as another user's to join an Aardvark room with them." );
 				this.setState( 
 					{ 
 						leftPosition: null,
@@ -600,6 +614,8 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 			else
 			{
 				console.log( "entering mirror mode")
+				this.showHintText( "Entering mirror room. Hold your hands together and pull both triggers"
+					+ " to exit." );
 				this.setState( 
 					{ 
 						leftPosition,
@@ -627,6 +643,8 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 					serverAddress={ this.props.serverAddress } 
 					key="self_match"
 					role={ SimpleRoomRole.Network }
+					onRoomJoined={ this.onRoomJoined }
+					onRoomMatchFailed={ this.onRoomMatchFailed }
 					onUpdate={ () => this.forceUpdate() }/>
 				<SimpleRoom 
 					leftPosition={ this.state.rightPosition } 
@@ -645,6 +663,8 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 					serverAddress={ this.props.serverAddress } 
 					key="matchRoom"
 					role={ SimpleRoomRole.Both }
+					onRoomJoined={ this.onRoomJoined }
+					onRoomMatchFailed={ this.onRoomMatchFailed }
 					onUpdate={ () => this.forceUpdate() }/>
 		}
 	}
@@ -655,11 +675,8 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 		return (
 			<AvStandardGrabbable modelUri={ g_builtinModelBox } modelScale={ 0.03 } 
 				modelColor="lightblue" style={ GrabbableStyle.Gadget } ref={ this.m_grabbableRef }>
-				<AvTransform translateY={ 0.08 } >
-					<AvPanel interactive={true} widthInMeters={ 0.1 }>
-						{ this.renderPanel() }
-					</AvPanel>
-				</AvTransform>
+
+				{ this.renderPanel() }
 
 				<AvOrigin path="/space/stage">
 					<AvInterfaceEntity volume={ [ { type: EVolumeType.Sphere, radius: 0.001} ] } 
