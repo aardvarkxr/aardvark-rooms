@@ -1,7 +1,7 @@
 import { ActiveInterface, AvComposedEntity, AvGadget, AvInterfaceEntity, AvOrigin, AvPanel, AvPrimitive, AvStandardGrabbable, AvTransform, DefaultLanding, GrabbableStyle, NetworkUniverseComponent, RemoteUniverseComponent, PrimitiveType } from '@aardvarkxr/aardvark-react';
-import { Av, AvNodeTransform, AvVector, EAction, EHand, emptyVolume, EVolumeType, g_builtinModelBox, infiniteVolume, nodeTransformFromMat4, nodeTransformToMat4 } from '@aardvarkxr/aardvark-shared';
+import { Av, AvNodeTransform, AvVector, EAction, EHand, emptyVolume, EVolumeType, g_builtinModelBox, infiniteVolume, nodeTransformFromMat4, nodeTransformToMat4, vecFromAvVector } from '@aardvarkxr/aardvark-shared';
 import { RoomResult, RoomMessage, RoomMessageType } from '@aardvarkxr/room-shared';
-import { mat4, vec4 } from '@tlaukkan/tsm';
+import { mat4, vec3, vec4 } from '@tlaukkan/tsm';
 import bind from 'bind-decorator';
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
@@ -442,8 +442,7 @@ interface SimpleRoomUIState
 	leftPosition?: AvVector;
 	rightPosition?: AvVector;
 
-	// leftTmpPosition?: AvVector;
-	// rightTmpPosition?: AvVector;
+	mirror?: boolean;
 }
 
 class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState >
@@ -499,24 +498,37 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 	{
 		if( this.state.leftPosition && this.state.rightPosition )
 		{
-			return <>
-				<div className="Button" onClick={ this.onLeaveMatchRoom }>Leave Match Room</div>
-				<div className="Label">
-					Connected to room from match: { this.matchRoom.current?.roomId }
-				</div>
-				{ this.renderVector( "Left", this.state.leftPosition ) }
-				{ this.renderVector( "Right", this.state.rightPosition ) }
-				{/* { this.renderVector( "Tmp Left", this.state.leftTmpPosition ) }
-				{ this.renderVector( "Tmp Right", this.state.rightTmpPosition ) } */}
-				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
-			</>;
+			if( this.state.mirror )
+			{
+				return <>
+					<div className="Button" onClick={ this.onLeaveMatchRoom }>Leave Match Room</div>
+					<div className="Label">
+						Connected to mirror: { this.matchRoom.current?.roomId }
+					</div>
+					{ this.renderVector( "Left", this.state.leftPosition ) }
+					{ this.renderVector( "Right", this.state.rightPosition ) }
+					{/* { this.renderVector( "Tmp Left", this.state.leftTmpPosition ) }
+					{ this.renderVector( "Tmp Right", this.state.rightTmpPosition ) } */}
+					{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
+				</>;
+			}
+			else
+			{
+				return <>
+					<div className="Button" onClick={ this.onLeaveMatchRoom }>Leave Match Room</div>
+					<div className="Label">
+						Connected to match: { this.matchRoom.current?.roomId }
+					</div>
+					{ this.renderVector( "Left", this.state.leftPosition ) }
+					{ this.renderVector( "Right", this.state.rightPosition ) }
+					{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
+				</>;
+			}
 		}
 		else
 		{
 			return <>
 				<div className="Label">Click both triggers to join a test room by yourself</div>
-				{/* { this.renderVector( "Tmp Left", this.state.leftTmpPosition ) }
-				{ this.renderVector( "Tmp Right", this.state.rightTmpPosition ) } */}
 				{ this.state.error && <div className="Label">Error: {this.state.error }</div> }
 			</>;
 		}
@@ -559,13 +571,84 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 
 		if( this.state.leftGrab && this.state.rightGrab )
 		{
-			this.setState( 
-				{ 
-					leftPosition: convertPos( this.state.leftGrab.selfFromPeer ),
-					rightPosition: convertPos( this.state.rightGrab.selfFromPeer ),
-				} );
+			let leftPosition = convertPos( this.state.leftGrab.selfFromPeer );
+			let rightPosition = convertPos( this.state.rightGrab.selfFromPeer );
+
+			const k_distanceForCloseGesture = 0.1;
+
+			let dist = vec3.distance( vecFromAvVector(leftPosition), vecFromAvVector( rightPosition ) );
+			if( dist > k_distanceForCloseGesture )
+			{
+				console.log( "entering match mode")
+				this.setState( 
+					{ 
+						leftPosition,
+						rightPosition,
+						mirror: false,
+					} );
+			}
+			else if( this.state.leftPosition && this.state.rightPosition )
+			{
+				console.log( "exiting room")
+				this.setState( 
+					{ 
+						leftPosition: null,
+						rightPosition: null,
+						mirror: false,
+					} );
+			}
+			else
+			{
+				console.log( "entering mirror mode")
+				this.setState( 
+					{ 
+						leftPosition,
+						rightPosition,
+						mirror: true,
+					} );
+			}
 		}
 	}
+
+	private renderUniverses()
+	{
+		if( !this.state.leftPosition || !this.state.rightPosition )
+		{
+			return null;
+		}
+
+		if( this.state.mirror )
+		{
+			return  <>
+				<SimpleRoom ref={ this.matchRoom }
+					leftPosition={ this.state.leftPosition } 
+					rightPosition={ this.state.rightPosition }
+					transform={ {} } 
+					serverAddress={ this.props.serverAddress } 
+					key="self_match"
+					role={ SimpleRoomRole.Network }
+					onUpdate={ () => this.forceUpdate() }/>
+				<SimpleRoom 
+					leftPosition={ this.state.rightPosition } 
+					rightPosition={ this.state.leftPosition }
+					transform={ { position: { x: 0, y: 1, z: 0 } } } 
+					role={ SimpleRoomRole.Remote }
+					serverAddress={ this.props.serverAddress } key="mirror_match"/>
+			</>
+		}
+		else
+		{
+			return <SimpleRoom ref={ this.matchRoom }
+					leftPosition={ this.state.leftPosition } 
+					rightPosition={ this.state.rightPosition }
+					transform={ {} } 
+					serverAddress={ this.props.serverAddress } 
+					key="matchRoom"
+					role={ SimpleRoomRole.Both }
+					onUpdate={ () => this.forceUpdate() }/>
+		}
+	}
+
 
 	public render()
 	{
@@ -594,22 +677,7 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 						transmits={ [ { iface: "room-grab@1", processor: this.onRightGrab } ] }/>}
 				</AvOrigin>
 
-				{ this.state.leftPosition && this.state.rightPosition && <>
-						<SimpleRoom ref={ this.matchRoom }
-							leftPosition={ this.state.leftPosition } 
-							rightPosition={ this.state.rightPosition }
-							transform={ {} } 
-							serverAddress={ this.props.serverAddress } 
-							key="self_match"
-							role={ SimpleRoomRole.Network }
-							onUpdate={ () => this.forceUpdate() }/>
-						<SimpleRoom 
-							leftPosition={ this.state.rightPosition } 
-							rightPosition={ this.state.leftPosition }
-							transform={ { position: { x: 0, y: 1, z: 0 } } } 
-							role={ SimpleRoomRole.Remote }
-							serverAddress={ this.props.serverAddress } key="mirror_match"/>
-					</> }
+				{ this.renderUniverses() }
 			</AvStandardGrabbable> );
 	}
 
