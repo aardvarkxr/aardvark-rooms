@@ -29,21 +29,21 @@
     "@types/jest": "~26.0.4",
     "@types/node": "^12.11.7",
     "@types/ws": "^6.0.2",
-    "bind-decorator": "^1.0.11",
-    "express": "^4.17.1",
     "jest": "~26.1.0",
 	"nodemon": "^2.0.6",
     "ts-jest": "~26.1.2",
     "path": "^0.12.7",
     "pkginfo": "^0.4.1",
-    "rimraf": "~3.0.2",
-    "typescript": "~3.9.6",
-    "ws": "^7.1.1"
+    "rimraf": "~3.0.2"
   },
   "dependencies": {
     "@aardvarkxr/aardvark-shared": "1.3.0",
     "@aardvarkxr/room-shared": "*",
     "@tlaukkan/tsm": "^0.8.5",
+    "bind-decorator": "^1.0.11",
+    "typescript": "~3.9.6",
+    "ws": "^7.1.1",
+    "express": "^4.17.1",
     "ts-node": "~8.10.2",
     "uuid": "^8.3.1"
   }
