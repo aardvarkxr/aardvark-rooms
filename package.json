@@ -8,7 +8,7 @@
     "clean": "lerna run clean",
     "build": "lerna run build",
     "pub": "lerna publish",
-    "start": "npm install && lerna run build && lerna run serve",
+    "start": "cd packages/room-server && npm run serve",
     "test": "lerna run test"
   },
   "dependencies": {
