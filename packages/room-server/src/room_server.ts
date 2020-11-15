@@ -2,13 +2,15 @@ import { RoomMessage, RoomMessageType, RoomResult } from '@aardvarkxr/room-share
 import bind from 'bind-decorator';
 import express from 'express';
 import * as http from 'http';
+import * as path from 'path';
 import * as WebSocket from 'ws';
 import { v4 as uuid } from 'uuid';
 import { AddressInfo } from 'net';
 import { HandSample, HandMatcher, MatchResult } from './hand_matcher';
 import { AvVector, vecFromAvVector, AvNodeTransform, minimalToMat4Transform, nodeTransformToMat4, nodeTransformFromMat4, rotationMatFromEulerDegrees, translateMat } from '@aardvarkxr/aardvark-shared';
 import { mat4, vec3, vec4 } from '@tlaukkan/tsm';
-import { Z_ASCII } from 'zlib';
+
+export let g_localInstallPath = path.resolve( path.dirname( __filename ), "../../.." );
 
 interface MemberInfo
 {
@@ -482,7 +484,7 @@ export class RoomServer
 	{
 		return new Promise<void>( ( resolve, reject ) =>
 		{
-			this.server.listen( this.port, "127.0.0.1", () => 
+			this.server.listen( this.port, () => 
 			{
 				this.port = ( this.server.address() as AddressInfo )?.port;
 				this.log(`Room Server started on port ${ this.port } :)`);
@@ -491,7 +493,19 @@ export class RoomServer
 
 				resolve();
 			} );
-		} );
+
+			this.app.use( "/gadget", express.static( 
+				path.resolve( g_localInstallPath, "packages/room-gadget/dist" ),
+				{
+					setHeaders: ( res: express.Response, path: string ) =>
+					{
+						if( path.endsWith( ".webmanifest" ) || path.endsWith( ".glb" ) )
+						{
+							res.setHeader( "Access-Control-Allow-Origin", "*" );
+						}
+					}
+				}) );
+			} );
 	}
 
 	async cleanup()
