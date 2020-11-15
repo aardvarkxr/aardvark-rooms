@@ -18,7 +18,7 @@
     "clean": "rimraf -rf ./dist",
     "compile": "tsc -p tsconfig.build.json",
     "prepublishOnly": "npm run build",
-    "serve": "node --inspect -r ts-node/register src/room_server_main.ts",
+    "serve": "node ./dist/room_server_main.js",
     "dev-serve": "node --inspect -r ts-node/register src/room_server_main.ts 18080",
     "test": "jest --runInBand",
     "test:watch": "jest --watch --runInBand",

@@ -465,6 +465,18 @@ export class RoomServer
 		} );
 
 		this.port = port ?? 24567;
+
+		this.app.use( "/gadget", express.static( 
+			path.resolve( g_localInstallPath, "packages/room-gadget/dist" ),
+			{
+				setHeaders: ( res: express.Response, path: string ) =>
+				{
+					if( path.endsWith( ".webmanifest" ) || path.endsWith( ".glb" ) )
+					{
+						res.setHeader( "Access-Control-Allow-Origin", "*" );
+					}
+				}
+			}) );
 	}
 
 	public get testMode(): boolean
@@ -488,24 +500,14 @@ export class RoomServer
 			{
 				this.port = ( this.server.address() as AddressInfo )?.port;
 				this.log(`Room Server started on port ${ this.port } :)`);
+				this.log( `Running from ${ g_localInstallPath }` );
 	
 				this.wss.on('connection', this.onConnection );
 
 				resolve();
 			} );
 
-			this.app.use( "/gadget", express.static( 
-				path.resolve( g_localInstallPath, "packages/room-gadget/dist" ),
-				{
-					setHeaders: ( res: express.Response, path: string ) =>
-					{
-						if( path.endsWith( ".webmanifest" ) || path.endsWith( ".glb" ) )
-						{
-							res.setHeader( "Access-Control-Allow-Origin", "*" );
-						}
-					}
-				}) );
-			} );
+		} );
 	}
 
 	async cleanup()
