@@ -683,6 +683,8 @@ export class RoomServer
 		// this.log( `joinerRight = ${ joinerRight.xyz }` );
 		// this.log( `hostFromJoiner = ${  hostFromJoiner.all() }` );
 
+		this.log( "matched two samples" );
+
 		let resp: RoomMessage =
 		{
 			type: RoomMessageType.JoinRoomWithMatchResponse,

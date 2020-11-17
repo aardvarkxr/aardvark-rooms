@@ -295,6 +295,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 	@bind 
 	private onJoinRoomWithMatchResponse( msg: RoomMessage )
 	{
+		console.log( `JoinRoomWithMatchResponse ${ RoomResult[ msg.result ] }` );
 		if( msg.result == RoomResult.MatchTimedOut )
 		{
 			this.props.onRoomMatchFailed?.();
@@ -700,5 +701,17 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 
 }
 
-let main = Av() ? <SimpleRoomUI serverAddress="ws://localhost:18080" /> : <DefaultLanding/>
+let serverAddress: string;
+if( location.hostname == "localhost" )
+{
+	serverAddress = "ws://" + location.host + "/";
+}
+else
+{
+	serverAddress = "wss://" + location.host + "/";
+}
+
+console.log( `Server address is ${ serverAddress }` );
+
+let main = Av() ? <SimpleRoomUI serverAddress={ serverAddress } /> : <DefaultLanding/>
 ReactDOM.render( main, document.getElementById( "root" ) );
