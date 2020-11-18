@@ -667,21 +667,21 @@ export class RoomServer
 
 		let hostFromJoiner = translateMat( hostFromJoinerTranslation ).multiply( hostFromJoinerRotation );
 
-		// function displayRadians( r: number )
-		// {
-		// 	return ( r * 180 / Math.PI ).toFixed( 0 );
-		// }
+		function displayRadians( r: number )
+		{
+			return ( r * 180 / Math.PI ).toFixed( 0 );
+		}
 
-		// this.log( "----" );
-		// this.log( `hostYaw = ${  displayRadians( hostYaw ) }` );
-		// this.log( `joinerYaw = ${  displayRadians( joinerYaw ) }` );
-		// this.log( `hostFromJoinerYaw = ${  displayRadians( hostFromJoinerYaw ) }` );
-		// this.log( `hostFromJoinerTranslation = ${ hostFromJoinerTranslation.xyz }` );
-		// this.log( `hostLeft = ${ hostLeft.xyz }` );
-		// this.log( `hostRight = ${ hostRight.xyz }` );
-		// this.log( `joinerLeft = ${  joinerLeft.xyz }` );
-		// this.log( `joinerRight = ${ joinerRight.xyz }` );
-		// this.log( `hostFromJoiner = ${  hostFromJoiner.all() }` );
+		this.log( "----" );
+		this.log( `hostYaw = ${  displayRadians( hostYaw ) }` );
+		this.log( `joinerYaw = ${  displayRadians( joinerYaw ) }` );
+		this.log( `hostFromJoinerYaw = ${  displayRadians( hostFromJoinerYaw ) }` );
+		this.log( `hostFromJoinerTranslation = ${ hostFromJoinerTranslation.xyz }` );
+		this.log( `hostLeft = ${ hostLeft.xyz }` );
+		this.log( `hostRight = ${ hostRight.xyz }` );
+		this.log( `joinerLeft = ${  joinerLeft.xyz }` );
+		this.log( `joinerRight = ${ joinerRight.xyz }` );
+		this.log( `hostFromJoiner = ${  hostFromJoiner.all() }` );
 
 		this.log( "matched two samples" );
 
