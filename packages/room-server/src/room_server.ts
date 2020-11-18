@@ -638,12 +638,12 @@ export class RoomServer
 			// the diff can't be vertical and have this really work
 			if( diff.length() < 0.001 )
 			{
-				//console.log( `len=${ diff.length() }` );
+				console.log( `len=${ diff.length() }` );
 				return 0;
 			}
 			
 			diff.normalize();
-			//console.log( `normalizedDiff=${ diff.xyz }` );
+			console.log( `normalizedDiff=${ diff.xyz }` );
 			return Math.atan2( diff.z, diff.x );
 		}
 		
