@@ -27,7 +27,11 @@ class RoomClient
 		this.ws = new WebSocket( addr );
 
 		this.connectionCallback = callback;
-		this.messageHanders = messageHandlers;
+		this.messageHanders = { ...messageHandlers };
+		if( !this.messageHanders[ RoomMessageType.UpdateRoomInfo ] )
+		{
+			this.messageHanders[ RoomMessageType.UpdateRoomInfo ] = ( msg: RoomMessage ) => {};
+		}
 
 		this.ws.onopen = this.onConnect;
 		this.ws.onmessage = this.onMessage;
@@ -45,7 +49,8 @@ class RoomClient
 		if( handler )
 		{
 			handler( msg );
-			return;
+			if( msg.type != RoomMessageType.JoinRoomWithMatchResponse )
+				return;
 		}
 
 		if( this.messageResolve )
@@ -146,6 +151,7 @@ class RoomClient
 		this.sendMessage( joinMsg );
 
 		let resp = await this.waitForMessage();
+		console.log( "Got join with match response" );
 		return [ resp?.result ?? RoomResult.UnknownFailure, resp.roomId ];
 	}
 
@@ -212,6 +218,18 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 			connected: false,
 			joined: false,
 		};
+	}
+
+	public componentDidUpdate( prevProps: SimpleRoomProps, prevState: SimpleRoomState )
+	{
+		if( prevState.joined != this.state.joined || prevState.roomId != this.state.roomId )
+		{
+			this.props.onUpdate?.();
+		}
+	}
+
+	public componentDidMount()
+	{
 		this.client = new RoomClient( 
 			this.props.serverAddress, this.onConnectionStateChange,
 			{
@@ -221,18 +239,16 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 				[ RoomMessageType.RequestMemberInfo ]: this.onRequestMemberInfo,
 				[ RoomMessageType.AddRemoteMember ]: this.onAddRemoteMember,
 				[ RoomMessageType.MemberLeft ]: this.onMemberLeft,
-				[ RoomMessageType.RoomInfo ] : this.onRoomInfo,
+				[ RoomMessageType.UpdateRoomInfo ] : this.onRoomInfo,
 				[ RoomMessageType.JoinRoomWithMatchResponse ]: this.onJoinRoomWithMatchResponse,
 
 			} );
 	}
 
-	public componentDidUpdate( prevProps: SimpleRoomProps, prevState: SimpleRoomState )
+	public componentWillUnmount()
 	{
-		if( prevState.joined != this.state.joined || prevState.roomId != this.state.roomId )
-		{
-			this.props.onUpdate?.();
-		}
+		this.setState( { connected: false, joined: false } );
+		this.client = null;
 	}
 
 	@bind
@@ -263,6 +279,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 				let[ result, roomId ] = await this.client.joinRoomWithMatch( this.props.leftPosition, 
 					this.props.rightPosition );
 				res = result;
+				console.log( "join room result", res );
 				if( res == RoomResult.Success )
 				{
 					this.setState( { roomId } );
@@ -270,6 +287,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 			}
 			if( res == RoomResult.Success )
 			{
+				console.log( "Joined room" );
 				this.setState(
 					{
 						joined: true,
@@ -631,11 +649,13 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 	{
 		if( !this.state.leftPosition || !this.state.rightPosition )
 		{
+			console.log( "Rendering no universe" );
 			return null;
 		}
 
 		if( this.state.mirror )
 		{
+			console.log( "Rendering mirror universe" );
 			return  <>
 				<SimpleRoom ref={ this.matchRoom }
 					leftPosition={ this.state.leftPosition } 
@@ -657,6 +677,7 @@ class SimpleRoomUI extends React.Component< SimpleRoomUIProps, SimpleRoomUIState
 		}
 		else
 		{
+			console.log( "Rendering multi-user universe" );
 			return <SimpleRoom ref={ this.matchRoom }
 					leftPosition={ this.state.leftPosition } 
 					rightPosition={ this.state.rightPosition }
