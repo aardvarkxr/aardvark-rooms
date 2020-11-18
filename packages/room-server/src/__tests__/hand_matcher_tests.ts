@@ -134,7 +134,7 @@ describe( "HandMatcher ", () =>
 		matcher.addSample( s1 );
 		expect( calls.length ).toBe( 0 );
 
-		addTime( 2000 );
+		addTime( 5000 );
 
 		expect( calls.length ).toBe( 1 );
 		expect( calls[0].result ).toBe( MatchResult.TimedOut );
@@ -156,7 +156,7 @@ describe( "HandMatcher ", () =>
 		expect( calls[0].contexts ).toHaveContexts( [ s1.context, s3.context ] );
 		calls = [];
 
-		addTime( 2000 )
+		addTime( 5000 )
 		expect( calls.length ).toBe( 1 );
 		expect( calls[0].result ).toBe( MatchResult.TimedOut );
 		expect( calls[0].contexts ).toHaveContexts( [ s2.context ] );

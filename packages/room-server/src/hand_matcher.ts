@@ -55,7 +55,7 @@ function nearlyEqual( a: number, b: number, threshold: number )
 const k_distanceThreshold = 0.02;
 const k_relativeHeightThreshold = 0.02;
 const k_absoluteHeightThreshold = 0.02;
-const k_sampleTimeoutMs = 1000;
+const k_sampleTimeoutMs = 2000;
 
 export class HandMatcher
 {
