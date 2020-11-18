@@ -1,5 +1,5 @@
-import { ActiveInterface, AvComposedEntity, AvGadget, AvInterfaceEntity, AvOrigin, AvPanel, AvPrimitive, AvStandardGrabbable, AvTransform, DefaultLanding, GrabbableStyle, NetworkUniverseComponent, RemoteUniverseComponent, PrimitiveType } from '@aardvarkxr/aardvark-react';
-import { Av, AvNodeTransform, AvVector, EAction, EHand, emptyVolume, EVolumeType, g_builtinModelBox, infiniteVolume, nodeTransformFromMat4, nodeTransformToMat4, vecFromAvVector } from '@aardvarkxr/aardvark-shared';
+import { ActiveInterface, AvComposedEntity, AvGadget, AvInterfaceEntity, AvOrigin, AvPanel, AvPrimitive, AvStandardGrabbable, AvTransform, DefaultLanding, GrabbableStyle, NetworkUniverseComponent, RemoteUniverseComponent, PrimitiveType, AvModel } from '@aardvarkxr/aardvark-react';
+import { Av, AvColor, AvNodeTransform, AvVector, EAction, EHand, emptyVolume, EVolumeType, g_builtinModelArrow, g_builtinModelBox, infiniteVolume, nodeTransformFromMat4, nodeTransformToMat4, vecFromAvVector } from '@aardvarkxr/aardvark-shared';
 import { RoomResult, RoomMessage, RoomMessageType } from '@aardvarkxr/room-shared';
 import { mat4, vec3, vec4 } from '@tlaukkan/tsm';
 import bind from 'bind-decorator';
@@ -166,6 +166,27 @@ enum SimpleRoomRole
 	Both,
 	Network,
 	Remote,
+}
+
+interface LocatorProps
+{
+	color: string;
+	scale?: number;
+}
+
+function Locator( props: LocatorProps )
+{
+	return 	<AvTransform uniformScale={ props.scale }>
+			<AvPrimitive radius={ props.scale * 0.01 } color={ props.color }
+				type={ PrimitiveType.Sphere }/>
+		<AvModel uri={ g_builtinModelArrow } color={ "red" } />
+		<AvTransform rotateX={ -90 }>
+			<AvModel uri={ g_builtinModelArrow } color={ "blue" } />
+		</AvTransform>
+		<AvTransform rotateZ={ 90 }>
+			<AvModel uri={ g_builtinModelArrow } color={ "green" } />
+		</AvTransform>
+	</AvTransform>
 }
 
 interface SimpleRoomProps
@@ -431,6 +452,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 				let remoteMember = this.remoteMembers[ memberId ];
 				remotes.push( 
 					<AvTransform key={ memberId } transform={ remoteMember.roomFromMember }>
+						<Locator color="green" scale={ 3 }/>
 						<AvComposedEntity volume={ emptyVolume() } 
 							debugName={ `Remote member ${ memberId }`} 
 							key={ memberId }
@@ -451,7 +473,9 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 					renderNetwork && <AvComposedEntity components={ [ this.networkUniverse ] }
 						volume={ infiniteVolume() } debugName="simple room network universe"/> 
 				}
+				<Locator color="grey"  scale={ 3 }/>
 				<AvTransform transform={ nodeTransformFromMat4( localMemberFromRoom ) }>
+					<Locator color="blue"  scale={ 3 }/>
 					{ remotes }
 				</AvTransform>
 			</AvOrigin> );
