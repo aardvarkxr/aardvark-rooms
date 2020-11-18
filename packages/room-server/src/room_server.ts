@@ -646,42 +646,58 @@ export class RoomServer
 			console.log( `normalizedDiff=${ diff.xyz }` );
 			return Math.atan2( diff.z, diff.x );
 		}
-		
-		// figure out the host's transform relative to the room
-		let roomFromHost = host.room.getRoomFromMember( host );
-		let roomFromHostMat = nodeTransformToMat4( roomFromHost );
 
-		let leftInRoom = new vec3( roomFromHostMat.multiplyVec4( new vec4( [ ...hostLeft.xyz, 1 ] ) ).xyz );
-		let rightInRoom = new vec3( roomFromHostMat.multiplyVec4( new vec4( [ ...hostRight.xyz, 1 ] ) ).xyz );
-		let centerInRoom = lerp( leftInRoom, rightInRoom, 0.5 );
-
-		let hostYaw = yawFromTwoPoints( rightInRoom, leftInRoom );
+		let hostYaw = yawFromTwoPoints( hostRight, hostLeft );
 		let joinerYaw = yawFromTwoPoints( joinerRight, joinerLeft );
-		let hostFromJoinerYaw = joinerYaw + hostYaw; 
 
-		let hostFromJoinerRotation = rotationMatFromEulerDegrees( 
-			new vec3( [ 0, hostFromJoinerYaw * 180 / Math.PI, 0 ] ) );
+		let joinerStageFromSync = mat4.product( translateMat( joinerCenter ), 
+			rotationMatFromEulerDegrees( new vec3( [ 0, joinerYaw * 180 / Math.PI, 0 ] ) ),
+			new mat4() );
+		let hostStageFromSync = mat4.product( translateMat( hostCenter ), 
+			rotationMatFromEulerDegrees( new vec3( [ 0, hostYaw * 180 / Math.PI, 0 ] ) ),
+			new mat4() );
 
-		let joinerCenterInHost = hostFromJoinerRotation.multiplyVec3( joinerCenter );
-		let hostFromJoinerTranslation = vec3.difference( centerInRoom, joinerCenterInHost, new vec3() );
+		let syncFromJoinerStage = joinerStageFromSync.copy( new mat4() ).inverse();
 
-		let hostFromJoiner = translateMat( hostFromJoinerTranslation ).multiply( hostFromJoinerRotation );
+		let hostStageFromJoinerStage = mat4.product( hostStageFromSync, syncFromJoinerStage, new mat4() );
 
-		function displayRadians( r: number )
-		{
-			return ( r * 180 / Math.PI ).toFixed( 0 );
-		}
+		//roomFromJoinerStage = roomFromHostStage * hostStageFromSync * syncFromJoinerStage;
 
-		this.log( "----" );
-		this.log( `hostYaw = ${  displayRadians( hostYaw ) }` );
-		this.log( `joinerYaw = ${  displayRadians( joinerYaw ) }` );
-		this.log( `hostFromJoinerYaw = ${  displayRadians( hostFromJoinerYaw ) }` );
-		this.log( `hostFromJoinerTranslation = ${ hostFromJoinerTranslation.xyz }` );
-		this.log( `hostLeft = ${ hostLeft.xyz }` );
-		this.log( `hostRight = ${ hostRight.xyz }` );
-		this.log( `joinerLeft = ${  joinerLeft.xyz }` );
-		this.log( `joinerRight = ${ joinerRight.xyz }` );
-		this.log( `hostFromJoiner = ${  hostFromJoiner.all() }` );
+		// figure out the host's transform relative to the room
+		// let roomFromHost = host.room.getRoomFromMember( host );
+		// let roomFromHostMat = nodeTransformToMat4( roomFromHost );
+
+		// let leftInRoom = new vec3( roomFromHostMat.multiplyVec4( new vec4( [ ...hostLeft.xyz, 1 ] ) ).xyz );
+		// let rightInRoom = new vec3( roomFromHostMat.multiplyVec4( new vec4( [ ...hostRight.xyz, 1 ] ) ).xyz );
+		// let centerInRoom = lerp( leftInRoom, rightInRoom, 0.5 );
+
+		// let hostYaw = yawFromTwoPoints( rightInRoom, leftInRoom );
+		// let joinerYaw = yawFromTwoPoints( joinerRight, joinerLeft );
+		// let hostFromJoinerYaw = joinerYaw + hostYaw; 
+
+		// let hostFromJoinerRotation = rotationMatFromEulerDegrees( 
+		// 	new vec3( [ 0, hostFromJoinerYaw * 180 / Math.PI, 0 ] ) );
+
+		// let joinerCenterInHost = hostFromJoinerRotation.multiplyVec3( joinerCenter );
+		// let hostFromJoinerTranslation = vec3.difference( centerInRoom, joinerCenterInHost, new vec3() );
+
+		// let hostFromJoiner = translateMat( hostFromJoinerTranslation ).multiply( hostFromJoinerRotation );
+
+		// function displayRadians( r: number )
+		// {
+		// 	return ( r * 180 / Math.PI ).toFixed( 0 );
+		// }
+
+		// this.log( "----" );
+		// this.log( `hostYaw = ${  displayRadians( hostYaw ) }` );
+		// this.log( `joinerYaw = ${  displayRadians( joinerYaw ) }` );
+		// this.log( `hostFromJoinerYaw = ${  displayRadians( hostFromJoinerYaw ) }` );
+		// this.log( `hostFromJoinerTranslation = ${ hostFromJoinerTranslation.xyz }` );
+		// this.log( `hostLeft = ${ hostLeft.xyz }` );
+		// this.log( `hostRight = ${ hostRight.xyz }` );
+		// this.log( `joinerLeft = ${  joinerLeft.xyz }` );
+		// this.log( `joinerRight = ${ joinerRight.xyz }` );
+		// this.log( `hostFromJoiner = ${  hostFromJoiner.all() }` );
 
 		this.log( "matched two samples" );
 
@@ -696,7 +712,7 @@ export class RoomServer
 		joiner.sendMessage( resp );
 
 		joiner.room.leave( joiner );
-		host.room.joinViaHost( joiner, host, hostFromJoiner );
+		host.room.joinViaHost( joiner, host, hostStageFromJoinerStage );
 	}
 
 	@bind
