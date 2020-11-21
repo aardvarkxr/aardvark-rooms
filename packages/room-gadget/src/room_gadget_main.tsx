@@ -269,6 +269,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 	public componentWillUnmount()
 	{
 		this.setState( { connected: false, joined: false } );
+		this.client?.close();
 		this.client = null;
 	}
 
@@ -352,7 +353,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 			message: event,
 		}
 
-		this.client.sendMessage( msg );
+		this.client?.sendMessage( msg );
 	}
 
 	@bind
@@ -429,7 +430,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 			messageIsReliable: reliable,
 		};
 
-		this.client.sendMessage( msg );
+		this.client?.sendMessage( msg );
 	}
 
 	@bind
