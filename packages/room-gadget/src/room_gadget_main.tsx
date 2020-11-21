@@ -453,7 +453,7 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 				let remoteMember = this.remoteMembers[ memberId ];
 				remotes.push( 
 					<AvTransform key={ memberId } transform={ remoteMember.roomFromMember }>
-						<Locator color="green" scale={ 3 }/>
+						{/* <Locator color="green" scale={ 3 }/> */}
 						<AvComposedEntity volume={ emptyVolume() } 
 							debugName={ `Remote member ${ memberId }`} 
 							key={ memberId }
@@ -474,9 +474,9 @@ class SimpleRoom extends React.Component< SimpleRoomProps, SimpleRoomState >
 					renderNetwork && <AvComposedEntity components={ [ this.networkUniverse ] }
 						volume={ infiniteVolume() } debugName="simple room network universe"/> 
 				}
-				<Locator color="grey"  scale={ 3 }/>
+				{/* <Locator color="grey"  scale={ 3 }/> */}
 				<AvTransform transform={ nodeTransformFromMat4( localMemberFromRoom ) }>
-					<Locator color="blue"  scale={ 3 }/>
+					{/* <Locator color="blue"  scale={ 3 }/> */}
 					{ remotes }
 				</AvTransform>
 			</AvOrigin> );
